@@ -1,0 +1,10 @@
+.project-context.md
+**/.project-context.md
+node_modules/
+tmp/
+release/
+*.log
+examples/*
+!examples/PrioSDK-Gen4-Photoreal-Room-Cinematic.sb3
+!examples/PrioSDK-Gen4-Photoreal-Room-Cinematic-Experimental-Learned.sb3
+!examples/PrioSDK-Gen4-Photoreal-Room-Realtime.sb3
