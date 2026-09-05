@@ -1,7 +1,7 @@
 # Third-party notices
 
 This document records third-party code incorporated into or required by PrioSDK
-Gen 4 v0.9.0's 154-opcode TurboWarp extension. It is provided for attribution and
+Gen 4 v0.9.0's 155-opcode TurboWarp extension. It is provided for attribution and
 does not change the licenses of the listed projects.
 
 ## Rapier 3D
@@ -40,7 +40,7 @@ automatically a supported PrioSDK feature or block.
 The FSR 1 EASU/RCAS WGSL translation derives from AMD's MIT-licensed
 [`ffx_fsr1.h`](https://github.com/GPUOpen-Effects/FidelityFX-FSR/blob/master/ffx-fsr/ffx_fsr1.h).
 The complete retained notice is
-[`NOTICE.fsr1.txt`](NOTICE.fsr1.txt) and is
+[`src/renderer/post/NOTICE.fsr1.txt`](NOTICE.fsr1.txt) and is
 preserved in generated-bundle legal comments.
 
 The locally authored `fsr3-experimental-*` temporal reconstruction and
@@ -125,14 +125,24 @@ roughness keeps the surface dry and fibrous instead of wet or smeared.
 
 The optional learned image-enhancement pass is wholly project-authored. It does
 not incorporate or call a third-party model, model service, generative system,
-or vendor upscaling/denoising SDK. Its fixed supervised 3x3 log-HDR coefficient
-set has SHA-256
-`03aaa872aa19b591f87f8c02ee883d3c58818faed2f3538527d04c2506247a6a`;
-this identifier is provenance for the bundled coefficients, not a third-party
-license notice. The `photoreal-detail`, `balanced`, and `artifact-cleanup`
-quality presets all use that same coefficient set and change only authored gate
-settings. The AMD FSR 1 notice above applies only to the separate FSR 1
-EASU/RCAS implementation.
+or vendor upscaling/denoising SDK. Two packaged supervised nonlinear residual
+specialists each use an `11 → 32 → 24 → 5` architecture with one denoising head
+and four subpixel heads. Native denoising uses point-domain training; 2x uses
+4x4 area-integrated source pixels and half-pixel targets. A dispatch evaluates
+only the selected model's fixed trained weights in GPU compute without model
+downloads. A project-authored linear filter is retained only for supported
+low-contrast flat-noise blending at the same resolution. Unsupported neighborhoods
+use an independently produced conventional-denoiser fallback, or raw input when
+that denoiser is off; it is never fed into neural inference.
+
+The `photoreal-detail`, `balanced`, and `artifact-cleanup` presets share the
+selected specialist's weights and vary bounded correction settings. The runtime status reporter
+records the current network's `specialist`, `weightsSha256`, `architecture`,
+`reconstructionHeads`, and `trainingEvidence`; earlier linear-model provenance
+is explicitly separated under `historicalLinearModel`. These identifiers and
+training records describe the packaged implementation, not third-party license
+obligations or guarantees of image quality. The AMD FSR 1 notice above applies
+only to the separate FSR 1 EASU/RCAS implementation.
 
 The complete per-asset records accompany the retained sources under
 `assets/models`, `assets/models/photoreal-room-hero`, and `assets/textures`.
