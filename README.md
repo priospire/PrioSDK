@@ -16,6 +16,8 @@ For your own project, load [dist/priosdk-gen4.js](dist/priosdk-gen4.js?raw=true)
 
 ## A few things to know
 
-PrioSDK needs a WebGPU-capable browser and GPU; it does not run in the standard Scratch editor. Cinematic rendering can take a long time, and speed depends on your device and scene. Experimental filtering is a tool to try, not a promise that every image improves.
+PrioSDK needs a WebGPU-capable browser and GPU; it does not run in the standard Scratch editor. Cinematic rendering can take a long time, and speed depends on your device and scene.
+
+The 'Realtime' example scene was rendered on and optimized for the NVIDIA GeForce RTX 3050 or higher.
 
 This repository contains the ready-to-load builds and three room examples. For the libraries and assets behind them, see the [third-party notices](dist/THIRD-PARTY-NOTICES.md).
