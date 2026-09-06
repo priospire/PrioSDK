@@ -16137,6 +16137,30 @@ fn raster_fragment(
   // src/renderer/core/offline-scheduling.ts
   var MAX_FENCE_BATCH = 16;
   var OFFLINE_PAINT_INTERVAL_MS = 50;
+  var INITIAL_OFFLINE_DISPATCH_TILES = 4;
+  var MAX_DISPATCH_TILES = 16;
+  function coalesceOfflineTiles(tiles, start, requested) {
+    if (!Number.isSafeInteger(start) || start < 0 || start >= tiles.length) throw new RangeError("Invalid offline tile cursor.");
+    const first = tiles[start];
+    const limit = normalizedFenceBatch(requested, MAX_DISPATCH_TILES);
+    let width = first.width;
+    let count = 1;
+    while (count < limit && start + count < tiles.length) {
+      const next = tiles[start + count];
+      if (next.y !== first.y || next.height !== first.height || next.x !== first.x + width) break;
+      width += next.width;
+      count++;
+    }
+    return { tile: { ...first, width }, count };
+  }
+  function adjustOfflineDispatchTiles(current, elapsedMs, executed = current) {
+    const desired = normalizedFenceBatch(current, MAX_DISPATCH_TILES);
+    const actual = Math.min(desired, normalizedFenceBatch(executed, MAX_DISPATCH_TILES));
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 1;
+    if (elapsedMs > 150) return Math.max(1, Math.floor(actual / 2));
+    if (elapsedMs < 50 && actual === desired) return Math.min(MAX_DISPATCH_TILES, desired * 2);
+    return desired;
+  }
   function normalizedFenceBatch(value, maximum) {
     return Number.isFinite(value) ? Math.min(maximum, Math.max(1, Math.floor(value))) : 1;
   }
@@ -20824,6 +20848,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     gpuWaits = /* @__PURE__ */ new Set();
     tileProgress = null;
     partialPresentations = 0;
+    traceScheduling = null;
     capabilities = emptyCapabilities();
     settings = cloneSettings(DEFAULT_RENDER_SETTINGS);
     camera = cloneCamera(DEFAULT_CAMERA);
@@ -21223,6 +21248,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         log: this.diagnosticLog.map((entry) => ({ ...entry })),
         samples: this.state === "running" && !this.offlineRenderActive ? { completed: this.sampleCount, requested: null } : { completed: this.renderProgressCompleted, requested: this.renderProgressRequested },
         partialPresentations: this.partialPresentations,
+        traceScheduling: this.traceScheduling === null ? null : { ...this.traceScheduling },
         tiles: this.tileProgress === null ? null : { ...this.tileProgress },
         scene: {
           revision: this.sceneRevision,
@@ -21254,6 +21280,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.renderProgressStopReason = "";
       this.tileProgress = null;
       this.partialPresentations = 0;
+      this.traceScheduling = null;
     }
     setDiagnosticPhase(label) {
       if (this.diagnosticPhase === label) return;
@@ -23039,14 +23066,25 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           }
         );
         const tiles = schedule.tiles;
+        const coalesceDispatches = schedule.workloadScale >= 4;
+        let dispatchTiles = coalesceDispatches ? INITIAL_OFFLINE_DISPATCH_TILES : 1;
         let tilesPerFence = schedule.tilesPerFence;
         let fenceStarted = diagnosticNow();
         let lastPaint = fenceStarted;
         let lastPreview = fenceStarted;
         this.setDiagnosticPhase("Tracing cinematic sample tiles");
         this.tileProgress = { completed: 0, total: tiles.length };
-        for (let tileIndex = 0; tileIndex < tiles.length; tileIndex += 1) {
-          const tile = tiles[tileIndex];
+        this.traceScheduling = {
+          submittedDispatches: 0,
+          lastDispatchPixels: 0,
+          nextDispatchTiles: dispatchTiles,
+          lastFenceMilliseconds: 0,
+          timing: "queue-fence-wall-clock"
+        };
+        for (let tileIndex = 0; tileIndex < tiles.length; ) {
+          const packet = coalesceOfflineTiles(tiles, tileIndex, dispatchTiles);
+          const tile = packet.tile;
+          const completedTiles = tileIndex + packet.count;
           assertOperationCurrent();
           this.writeTraceDispatchTile(device, tile);
           const encoder2 = device.createCommandEncoder({ label: "PrioSDK offline trace tile encoder" });
@@ -23079,36 +23117,51 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           );
           computePass.end();
           device.queue.submit([encoder2.finish()]);
+          this.traceScheduling = {
+            ...this.traceScheduling,
+            submittedDispatches: this.traceScheduling.submittedDispatches + 1,
+            lastDispatchPixels: tile.width * tile.height
+          };
           tilesSinceFence += 1;
-          tilesSincePaint += 1;
-          if (tilesSinceFence >= tilesPerFence || tileIndex === tiles.length - 1) {
+          tilesSincePaint += packet.count;
+          if (tilesSinceFence >= tilesPerFence || completedTiles === tiles.length) {
             await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Completing cinematic trace tiles");
             const fenceCompleted = diagnosticNow();
-            tilesPerFence = adjustOfflineFenceBatch(tilesPerFence, fenceCompleted - fenceStarted);
+            const fenceMilliseconds = fenceCompleted - fenceStarted;
+            if (coalesceDispatches) {
+              dispatchTiles = adjustOfflineDispatchTiles(dispatchTiles, fenceMilliseconds, packet.count);
+            } else {
+              tilesPerFence = adjustOfflineFenceBatch(tilesPerFence, fenceMilliseconds);
+            }
+            this.traceScheduling = { ...this.traceScheduling, nextDispatchTiles: dispatchTiles, lastFenceMilliseconds: fenceMilliseconds };
             tilesSinceFence = 0;
             assertOperationCurrent();
             if (this.device !== device || this.state !== "ready" && this.state !== "running") {
               throw new RendererLifecycleError(this.message);
             }
             if (this.sceneDirty || this.scenePreparation !== null) return;
-            this.tileProgress = { completed: tileIndex + 1, total: tiles.length };
-            this.message = `Rendering exact cinematic sample tiles (${tileIndex + 1}/${tiles.length}) on WebGPU.`;
-            if (this.sampleCount === 0 && fenceCompleted - lastPreview >= 500 && tileIndex < tiles.length - 1) {
+            this.tileProgress = { completed: completedTiles, total: tiles.length };
+            this.message = `Rendering exact cinematic sample tiles (${completedTiles}/${tiles.length}) on WebGPU.`;
+            let previewPresented = false;
+            if (this.sampleCount === 0 && fenceCompleted - lastPreview >= 500 && completedTiles < tiles.length) {
               this.submitPartialOfflinePreview(device, destinationTexture);
               await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Presenting partial cinematic sample");
               assertOperationCurrent();
               this.partialPresentations += 1;
+              previewPresented = true;
               lastPreview = diagnosticNow();
               this.message += " Showing unfinished first sample.";
             }
-            if (shouldYieldOfflinePaint(lastPaint, diagnosticNow(), tilesSincePaint, schedule.tilesPerPaint) || tileIndex === tiles.length - 1) {
+            if (shouldYieldOfflinePaint(lastPaint, diagnosticNow(), tilesSincePaint, schedule.tilesPerPaint) || completedTiles === tiles.length) {
               tilesSincePaint = 0;
-              await yieldToBrowserPaint(this.ownerWindow);
+              if (previewPresented || completedTiles === tiles.length) await yieldToBrowserPaint(this.ownerWindow);
+              else await yieldToBrowser(this.ownerWindow);
               assertOperationCurrent();
               lastPaint = diagnosticNow();
             }
             fenceStarted = diagnosticNow();
           }
+          tileIndex = completedTiles;
         }
         assertOperationCurrent();
         this.setDiagnosticPhase("Processing and presenting cinematic sample");
@@ -29409,7 +29462,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   }
 
   // src/runtime-version.ts
-  var __PRIOSDK_BUILD_ID__ = "ae31f244a24149758b8e";
+  var __PRIOSDK_BUILD_ID__ = "04e78d696420f4285fc9";
   var PRIOSDK_RUNTIME_VERSION = "0.10.0";
   var PRIOSDK_RUNTIME_BUILD = typeof __PRIOSDK_BUILD_ID__ === "string" ? `${PRIOSDK_RUNTIME_VERSION}+${__PRIOSDK_BUILD_ID__}` : `${PRIOSDK_RUNTIME_VERSION}+development`;
 
