@@ -5,8 +5,8 @@ var PrioSDKGen4Bundle = (() => {
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __export = (target, all) => {
-    for (var name in all)
-      __defProp(target, name, { get: all[name], enumerable: true });
+    for (var name2 in all)
+      __defProp(target, name2, { get: all[name2], enumerable: true });
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -26,9 +26,11 @@ var PrioSDKGen4Bundle = (() => {
     DEFAULT_CLOUD_RENDERING_SETTINGS: () => DEFAULT_CLOUD_RENDERING_SETTINGS,
     EnvironmentMeshBuilder: () => EnvironmentMeshBuilder,
     FreeCameraController: () => FreeCameraController,
+    GuidedInferenceService: () => GuidedInferenceService,
     HARD_MODEL_LIMITS: () => HARD_MODEL_LIMITS,
     MEADOW_PRESETS: () => MEADOW_PRESETS,
     MODEL_DETAIL_PRESETS: () => MODEL_DETAIL_PRESETS,
+    ModelImportController: () => ModelImportController,
     PHYSICS_QUALITY_PRESETS: () => PHYSICS_QUALITY_PRESETS,
     PhysicsWorld: () => PhysicsWorld,
     PrioSDKExtension: () => PrioSDKExtension,
@@ -37,11 +39,13 @@ var PrioSDKGen4Bundle = (() => {
     WebGPURenderer: () => WebGPURenderer,
     WebMMuxer: () => WebMMuxer,
     assertWithinModelBudget: () => assertWithinModelBudget,
+    bakeGltfInstance: () => bakeGltfInstance,
     buildBvh: () => buildBvh,
     buildMeadowEnvironment: () => buildMeadowEnvironment,
     calculateSmoothNormals: () => calculateSmoothNormals,
     createCloudDensityVolume: () => createCloudDensityVolume,
     createFractalTerrain: () => createFractalTerrain,
+    createGuidedReconstructionGraph: () => createGuidedReconstructionGraph,
     createHeightWindWeights: () => createHeightWindWeights,
     createHeightfield: () => createHeightfield,
     createUvSphere: () => createUvSphere,
@@ -57,6 +61,7 @@ var PrioSDKGen4Bundle = (() => {
     packLights: () => packLights,
     packMaterials: () => packMaterials,
     packTriangles: () => packTriangles,
+    parseGltf: () => parseGltf,
     parseObj: () => parseObj,
     planGridDetail: () => planGridDetail,
     planMeadowEnvironment: () => planMeadowEnvironment,
@@ -65,6 +70,7 @@ var PrioSDKGen4Bundle = (() => {
     resolveModelBudget: () => resolveModelBudget,
     sampleCloudDensityVolume: () => sampleCloudDensityVolume,
     selectModelLod: () => selectModelLod,
+    verifyGuidedModel: () => verifyGuidedModel,
     withSmoothNormals: () => withSmoothNormals
   });
 
@@ -4272,6 +4278,9 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if ((textureFlags & 1 << 4) !== 0 && roughnessTextureLayer === NO_TEXTURE_LAYER) {
       throw new RangeError("material.roughnessTextureLayer is required when the independent roughness-map flag is enabled");
     }
+    if ((textureFlags & 1 << 5) !== 0 && roughnessTextureLayer === NO_TEXTURE_LAYER) {
+      throw new RangeError("material.roughnessTextureLayer is required when the packed metallic-roughness flag is enabled");
+    }
     const uvRepeat = validateVec2(definition.uvRepeat ?? [1, 1], "material.uvRepeat");
     const atlasOffset = validateVec2(definition.atlasOffset ?? [0, 0], "material.atlasOffset");
     const atlasScale = validateVec2(definition.atlasScale ?? [1, 1], "material.atlasScale");
@@ -4347,10 +4356,10 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
       for (let index = 0; index < input.length; index += 1) {
         const value = input[index];
         if (!value) throw new TypeError(`${label}[${index}] must be a three-component vector`);
-        const vector = validateVec3(value, `${label}[${index}]`);
-        output2[index * 3] = vector[0];
-        output2[index * 3 + 1] = vector[1];
-        output2[index * 3 + 2] = vector[2];
+        const vector2 = validateVec3(value, `${label}[${index}]`);
+        output2[index * 3] = vector2[0];
+        output2[index * 3 + 1] = vector2[1];
+        output2[index * 3 + 2] = vector2[2];
       }
       return output2;
     }
@@ -4377,9 +4386,9 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
       for (let index = 0; index < input.length; index += 1) {
         const value = input[index];
         if (!value) throw new TypeError(`${label}[${index}] must be a two-component vector`);
-        const vector = validateVec2(value, `${label}[${index}]`);
-        output2[index * 2] = vector[0];
-        output2[index * 2 + 1] = vector[1];
+        const vector2 = validateVec2(value, `${label}[${index}]`);
+        output2[index * 2] = vector2[0];
+        output2[index * 2 + 1] = vector2[1];
       }
       return output2;
     }
@@ -5385,6 +5394,7 @@ struct SurfaceSample {
   normal: vec3<f32>,
   roughness: f32,
   unresolved_normal_variance: f32,
+  metallic: f32,
 }
 
 struct Light {
@@ -5541,6 +5551,7 @@ var<workgroup> bvh_traversal_stack: array<u32, ${BVH_WORKGROUP_STACK_WORDS}>;
 const MATERIAL_TEXTURE_LUMINANCE_ROUGHNESS: u32 = 4u;
 const MATERIAL_TEXTURE_INDEPENDENT_NORMAL: u32 = 8u;
 const MATERIAL_TEXTURE_INDEPENDENT_ROUGHNESS: u32 = 16u;
+const MATERIAL_TEXTURE_PACKED_METALLIC_ROUGHNESS: u32 = 32u;
 const ATLAS_MIP_GUARD_LEVELS: f32 = 2.0;
 const ATLAS_MIP_GUARD_TEXELS: f32 = 2.0;
 const BACKPLATE_TRANSMISSION_ROUGHNESS_MAX: f32 = 0.04;
@@ -6318,13 +6329,13 @@ fn procedural_surface_sample(
   let normal_amount = clamp(material.normal_strength, 0.0, 1.0);
   let maximum_micro_amount = max(color_amount, max(roughness_amount, normal_amount));
   if (maximum_micro_amount <= 0.000001) {
-    return SurfaceSample(base_albedo, normal_value, base_roughness, 0.0);
+    return SurfaceSample(base_albedo, normal_value, base_roughness, 0.0, clamp(material.metallic, 0.0, 1.0));
   }
   let named_micro_surface = (material.flags & MATERIAL_INTERIOR_DETAIL_MASK) != 0u;
   let legacy_organic_surface = (material.flags & MATERIAL_LEGACY_DETAIL_MASK) != 0u;
   if ((!named_micro_surface && legacy_organic_surface)
       || (material.flags & MATERIAL_UNLIT) != 0u) {
-    return SurfaceSample(base_albedo, normal_value, base_roughness, 0.0);
+    return SurfaceSample(base_albedo, normal_value, base_roughness, 0.0, clamp(material.metallic, 0.0, 1.0));
   }
 
   let stable_position = stable_microdetail_position(position, uv, uv_gradient_magnitudes);
@@ -6353,7 +6364,8 @@ fn procedural_surface_sample(
       base_albedo,
       normal_value,
       base_roughness,
-      unresolved_variance
+      unresolved_variance,
+      clamp(material.metallic, 0.0, 1.0)
     );
   }
   let fields = interior_detail_fields(stable_position, material.detail_scale, octave_weights);
@@ -6682,7 +6694,8 @@ fn procedural_surface_sample(
     albedo,
     detail_normal,
     roughness,
-    unresolved_normal_variance
+    unresolved_normal_variance,
+    clamp(material.metallic, 0.0, 1.0)
   );
 }
 
@@ -6875,7 +6888,10 @@ fn material_surface_sample(
   let independent_roughness_available = (material.texture_flags & MATERIAL_TEXTURE_INDEPENDENT_ROUGHNESS) != 0u
     && material_texture_layer_available(material.pbr_texture_layers.y)
     && roughness_mapping_enabled;
-  if (!base_texture_available && !independent_normal_available && !independent_roughness_available) {
+  let packed_metallic_roughness_available = (material.texture_flags & MATERIAL_TEXTURE_PACKED_METALLIC_ROUGHNESS) != 0u
+    && material_texture_layer_available(material.pbr_texture_layers.y)
+    && roughness_mapping_enabled;
+  if (!base_texture_available && !independent_normal_available && !independent_roughness_available && !packed_metallic_roughness_available) {
     return resolve_surface_normal_variance(surface);
   }
 
@@ -6896,7 +6912,12 @@ fn material_surface_sample(
       surface.albedo = mix(surface.albedo, textured_albedo, clamp(material.texture_strength, 0.0, 1.0));
     }
   }
-  if (independent_roughness_available) {
+  if (packed_metallic_roughness_available) {
+    let mapped = sample_linear_material_texture(material.pbr_texture_layers.y, atlas_uv, lod);
+    let map_strength = clamp(material.texture_roughness_strength, 0.0, 1.0);
+    surface.roughness = clamp(mix(surface.roughness, material.roughness * clamp(mapped.g, 0.0, 1.0), map_strength), 0.02, 1.0);
+    surface.metallic = clamp(mix(surface.metallic, material.metallic * clamp(mapped.b, 0.0, 1.0), map_strength), 0.0, 1.0);
+  } else if (independent_roughness_available) {
     let mapped_roughness = sample_linear_material_texture(
       material.pbr_texture_layers.y,
       atlas_uv,
@@ -7233,7 +7254,7 @@ fn material_hit(
     surface.albedo,
     surface.roughness,
     emission,
-    clamp(material.metallic, 0.0, 1.0),
+    surface.metallic,
     max(clamp(material.transmission, 0.0, 1.0), 1.0 - clamp(material.alpha, 0.0, 1.0)),
     clamp(material.ior, 1.0, 3.0),
     material_id,
@@ -11128,9 +11149,9 @@ ${TRACE_MODE_CONSTANT_ANCHOR}`
   function positive(value) {
     return Number.isFinite(value) && value > 0 ? value : 1;
   }
-  function explicitOutputDimension(value, name) {
+  function explicitOutputDimension(value, name2) {
     if (!Number.isSafeInteger(value) || (value ?? 0) <= 0) {
-      throw new RangeError(`${name} must be a positive safe integer`);
+      throw new RangeError(`${name2} must be a positive safe integer`);
     }
     return value;
   }
@@ -11258,6 +11279,7 @@ struct Surface {
   normal: vec3<f32>,
   roughness: f32,
   alpha: f32,
+  metallic: f32,
 }
 
 struct SurfaceDerivatives {
@@ -11283,6 +11305,36 @@ struct DetailCoordinates {
 @group(0) @binding(7) var environment_texture: texture_2d<f32>;
 @group(0) @binding(8) var backplate_texture: texture_2d<f32>;
 
+struct RasterShadowSettings {
+  world_to_light: mat4x4<f32>,
+  parameters: vec4<f32>,
+}
+@group(1) @binding(0) var<uniform> raster_shadow: RasterShadowSettings;
+@group(1) @binding(1) var raster_shadow_depth: texture_depth_2d;
+@group(1) @binding(2) var raster_shadow_sampler: sampler_comparison;
+
+fn raster_shadow_visibility(position: vec3<f32>, light_index: u32) -> f32 {
+  if (raster_shadow.parameters.x < 0.5 || light_index != u32(raster_shadow.parameters.y)) {
+    return 1.0;
+  }
+  let clip = raster_shadow.world_to_light * vec4<f32>(position, 1.0);
+  let uv = clip.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5);
+  if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || clip.z < 0.0 || clip.z > 1.0) {
+    return 1.0;
+  }
+  var visibility = 0.0;
+  for (var y = -1; y <= 1; y += 1) {
+    for (var x = -1; x <= 1; x += 1) {
+      visibility += textureSampleCompareLevel(
+        raster_shadow_depth, raster_shadow_sampler,
+        uv + vec2<f32>(f32(x), f32(y)) * raster_shadow.parameters.z,
+        clip.z - raster_shadow.parameters.w
+      );
+    }
+  }
+  return visibility / 9.0;
+}
+
 const PI: f32 = 3.141592653589793;
 const MAX_LIGHTS: u32 = 32u;
 const MAX_SAFE_RADIANCE: f32 = 65504.0;
@@ -11303,6 +11355,7 @@ const MATERIAL_TEXTURE_LUMINANCE_NORMAL: u32 = 2u;
 const MATERIAL_TEXTURE_LUMINANCE_ROUGHNESS: u32 = 4u;
 const MATERIAL_TEXTURE_INDEPENDENT_NORMAL: u32 = 8u;
 const MATERIAL_TEXTURE_INDEPENDENT_ROUGHNESS: u32 = 16u;
+const MATERIAL_TEXTURE_PACKED_METALLIC_ROUGHNESS: u32 = 32u;
 
 fn safe_normalize(value: vec3<f32>, fallback: vec3<f32>) -> vec3<f32> {
   let length_squared = dot(value, value);
@@ -11462,6 +11515,22 @@ fn raster_vertex(@builtin(vertex_index) vertex_index: u32) -> RasterVertexOutput
   output.uv = triangle_uv(triangle, corner);
   output.material_id = triangle.material_id;
   output.previous_world_position = previous_position;
+  return output;
+}
+
+@vertex
+fn shadow_vertex(@builtin(vertex_index) vertex_index: u32) -> RasterVertexOutput {
+  let triangle = triangles[vertex_index / 3u];
+  let corner = vertex_index % 3u;
+  let base_position = triangle_position(triangle, corner);
+  let position = base_position + wind_displacement(base_position, triangle_wind_weight(triangle, corner), triangle.wind_amplitude);
+  var output: RasterVertexOutput;
+  output.clip_position = raster_shadow.world_to_light * vec4<f32>(position, 1.0);
+  output.world_position = position;
+  output.world_normal = triangle_normal(triangle, corner);
+  output.uv = triangle_uv(triangle, corner);
+  output.material_id = triangle.material_id;
+  output.previous_world_position = position;
   return output;
 }
 
@@ -12052,6 +12121,7 @@ fn material_surface(
   var albedo = max(material.base_color, vec3<f32>(0.0));
   var alpha = clamp(material.alpha, 0.0, 1.0);
   var roughness = clamp(material.roughness, 0.02, 1.0);
+  var metallic = clamp(material.metallic, 0.0, 1.0);
   let geometric_normal = safe_normalize(interpolated_normal, vec3<f32>(0.0, 1.0, 0.0));
   var normal = geometric_normal;
   if ((material.texture_flags & MATERIAL_TEXTURE_BASE_COLOR) != 0u
@@ -12066,7 +12136,14 @@ fn material_surface(
     albedo = mix(albedo, albedo * max(sampled.rgb, vec3<f32>(0.0)), clamp(material.texture_strength, 0.0, 1.0));
     alpha *= sampled.a;
   }
-  if ((material.texture_flags & MATERIAL_TEXTURE_INDEPENDENT_ROUGHNESS) != 0u
+  if ((material.texture_flags & MATERIAL_TEXTURE_PACKED_METALLIC_ROUGHNESS) != 0u
+      && material.pbr_texture_layers.y != NO_TEXTURE_LAYER) {
+    let maps = sample_material_linear(material.pbr_texture_layers.y, uv, lod,
+      texture_derivatives.uv_dx, texture_derivatives.uv_dy);
+    let map_strength = clamp(material.texture_roughness_strength, 0.0, 1.0);
+    roughness = clamp(mix(roughness, material.roughness * clamp(maps.g, 0.0, 1.0), map_strength), 0.02, 1.0);
+    metallic = clamp(mix(metallic, material.metallic * clamp(maps.b, 0.0, 1.0), map_strength), 0.0, 1.0);
+  } else if ((material.texture_flags & MATERIAL_TEXTURE_INDEPENDENT_ROUGHNESS) != 0u
       && material.pbr_texture_layers.y != NO_TEXTURE_LAYER) {
     let mapped = sample_material_linear(
       material.pbr_texture_layers.y,
@@ -12159,7 +12236,7 @@ fn material_surface(
     );
     }
   }
-  return Surface(sanitize_radiance(albedo), normal, roughness, alpha);
+  return Surface(sanitize_radiance(albedo), normal, roughness, alpha, metallic);
 }
 
 fn fresnel_schlick(cosine: f32, f0: vec3<f32>) -> vec3<f32> {
@@ -12176,7 +12253,7 @@ fn surface_reflectance_zero(surface: Surface, material: Material) -> vec3<f32> {
   return mix(
     vec3<f32>(dielectric_f0(material.ior)),
     max(surface.albedo, vec3<f32>(0.0)),
-    clamp(material.metallic, 0.0, 1.0)
+    clamp(surface.metallic, 0.0, 1.0)
   );
 }
 
@@ -12200,7 +12277,7 @@ fn foliage_diffuse_transmission_response(
   incident_direction: vec3<f32>
 ) -> vec3<f32> {
   let transmission = clamp(max(material.transmission, 1.0 - material.alpha), 0.0, 1.0);
-  let metallic = clamp(material.metallic, 0.0, 1.0);
+  let metallic = clamp(surface.metallic, 0.0, 1.0);
   if ((material.flags & MATERIAL_FOLIAGE) == 0u
       || transmission <= 0.000001
       || metallic >= 0.999999) {
@@ -12233,7 +12310,7 @@ fn foliage_environment_transmission_response(
   outgoing_direction: vec3<f32>
 ) -> vec3<f32> {
   let transmission = clamp(max(material.transmission, 1.0 - material.alpha), 0.0, 1.0);
-  let metallic = clamp(material.metallic, 0.0, 1.0);
+  let metallic = clamp(surface.metallic, 0.0, 1.0);
   if ((material.flags & MATERIAL_FOLIAGE) == 0u
       || transmission <= 0.000001
       || metallic >= 0.999999) {
@@ -12273,7 +12350,7 @@ fn direct_light_brdf(
   let k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
   let geometry_v = n_dot_v / (n_dot_v * (1.0 - k) + k);
   let geometry_l = n_dot_l / (n_dot_l * (1.0 - k) + k);
-  let metallic = clamp(material.metallic, 0.0, 1.0);
+  let metallic = clamp(surface.metallic, 0.0, 1.0);
   let transmission = clamp(max(material.transmission, 1.0 - material.alpha), 0.0, 1.0);
   let f0 = surface_reflectance_zero(surface, material);
   let fresnel = fresnel_schlick(v_dot_h, f0);
@@ -12296,7 +12373,7 @@ fn shade_surface(surface: Surface, material: Material, position: vec3<f32>) -> v
     globals.camera_position_tan_fov.xyz - position,
     surface.normal
   );
-  let metallic = clamp(material.metallic, 0.0, 1.0);
+  let metallic = clamp(surface.metallic, 0.0, 1.0);
   let transmission = clamp(max(material.transmission, 1.0 - material.alpha), 0.0, 1.0);
   let foliage = (material.flags & MATERIAL_FOLIAGE) != 0u;
   let transport_roughness = select(
@@ -12363,6 +12440,7 @@ fn shade_surface(surface: Surface, material: Material, position: vec3<f32>) -> v
         * max(light.intensity, 0.0)
         * attenuation;
     }
+    incident *= raster_shadow_visibility(position, index);
     radiance += direct_light_brdf(
       surface,
       material,
@@ -12398,6 +12476,16 @@ fn background_fragment(@builtin(position) fragment_position: vec4<f32>) -> Raste
   output.albedo_roughness = vec4<f32>(0.0, 0.0, 0.0, 1.0);
   output.motion_reactive = vec4<f32>(previous_projection.xy - current_uv, 0.0, 65504.0);
   return output;
+}
+
+@fragment
+fn shadow_fragment(input: RasterVertexOutput) {
+  let derivatives = SurfaceDerivatives(dpdx(input.world_position), dpdy(input.world_position), dpdx(input.uv), dpdy(input.uv));
+  if (input.material_id >= min(u32(globals.scene_counts.w), arrayLength(&materials))) {discard;}
+  let material = materials[input.material_id];
+  if (material.transmission > 0.001 && (material.flags & MATERIAL_FOLIAGE) == 0u) {discard;}
+  let surface = material_surface(material, input.world_position, input.world_normal, input.uv, derivatives);
+  if (surface.alpha < 0.1) {discard;}
 }
 
 @fragment
@@ -12469,165 +12557,6 @@ fn raster_fragment(
 }
 `
   );
-
-  // src/renderer/raster-pipeline.ts
-  var RASTER_DEPTH_FORMAT = "depth32float";
-  var RASTER_COLOR_FORMATS = Object.freeze([
-    "rgba16float",
-    "rgba16float",
-    "rgba8unorm",
-    "rgba16float"
-  ]);
-  var RASTERIZATION_LIMITATIONS = Object.freeze([
-    "analytic sphere primitives require a triangle mesh in raster mode",
-    "direct lights are unshadowed and finite light radius is not area-sampled because the raster path has no shadow-map pass",
-    "fog, volumetric clouds, and path-traced indirect lighting remain trace-mode features",
-    "non-foliage transmission is an environment approximation without refraction or order-independent transparency",
-    "alpha and transmission surfaces use cutout depth writes rather than sorted translucent blending"
-  ]);
-  var RasterPipeline = class _RasterPipeline {
-    #device;
-    #bindGroupLayout;
-    #backgroundPipeline;
-    #geometryPipeline;
-    constructor(device, bindGroupLayout, backgroundPipeline, geometryPipeline) {
-      this.#device = device;
-      this.#bindGroupLayout = bindGroupLayout;
-      this.#backgroundPipeline = backgroundPipeline;
-      this.#geometryPipeline = geometryPipeline;
-    }
-    static async create(device) {
-      const module = device.createShaderModule({
-        label: "PrioSDK traditional raster shader",
-        code: RASTER_SHADER
-      });
-      await assertShaderCompiles(module);
-      const vertexVisibility = GPUShaderStage.VERTEX;
-      const fragmentVisibility = GPUShaderStage.FRAGMENT;
-      const bindGroupLayout = device.createBindGroupLayout({
-        label: "PrioSDK traditional raster resource layout",
-        entries: [
-          { binding: 0, visibility: vertexVisibility | fragmentVisibility, buffer: { type: "uniform" } },
-          { binding: 1, visibility: vertexVisibility, buffer: { type: "read-only-storage" } },
-          { binding: 2, visibility: fragmentVisibility, buffer: { type: "read-only-storage" } },
-          { binding: 3, visibility: fragmentVisibility, buffer: { type: "read-only-storage" } },
-          { binding: 4, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d-array" } },
-          { binding: 5, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d-array" } },
-          { binding: 6, visibility: fragmentVisibility, sampler: { type: "filtering" } },
-          { binding: 7, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d" } },
-          { binding: 8, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d" } }
-        ]
-      });
-      const pipelineLayout = device.createPipelineLayout({
-        label: "PrioSDK traditional raster pipeline layout",
-        bindGroupLayouts: [bindGroupLayout]
-      });
-      const fragmentTargets = RASTER_COLOR_FORMATS.map((format) => ({ format }));
-      const primitive = {
-        topology: "triangle-list",
-        frontFace: "ccw",
-        cullMode: "none"
-      };
-      const backgroundPipelinePromise = device.createRenderPipelineAsync({
-        label: "PrioSDK environment background raster pipeline",
-        layout: pipelineLayout,
-        vertex: { module, entryPoint: "background_vertex" },
-        fragment: { module, entryPoint: "background_fragment", targets: fragmentTargets },
-        primitive,
-        depthStencil: {
-          format: RASTER_DEPTH_FORMAT,
-          depthWriteEnabled: false,
-          depthCompare: "always"
-        }
-      });
-      const geometryPipelinePromise = device.createRenderPipelineAsync({
-        label: "PrioSDK traditional triangle raster pipeline",
-        layout: pipelineLayout,
-        vertex: { module, entryPoint: "raster_vertex" },
-        fragment: { module, entryPoint: "raster_fragment", targets: fragmentTargets },
-        primitive,
-        depthStencil: {
-          format: RASTER_DEPTH_FORMAT,
-          depthWriteEnabled: true,
-          depthCompare: "less"
-        }
-      });
-      const [backgroundPipeline, geometryPipeline] = await Promise.all([
-        backgroundPipelinePromise,
-        geometryPipelinePromise
-      ]);
-      return new _RasterPipeline(
-        device,
-        bindGroupLayout,
-        backgroundPipeline,
-        geometryPipeline
-      );
-    }
-    createBindGroup(resources) {
-      return this.#device.createBindGroup({
-        label: "PrioSDK traditional raster resources",
-        layout: this.#bindGroupLayout,
-        entries: [
-          { binding: 0, resource: { buffer: resources.uniforms } },
-          { binding: 1, resource: { buffer: resources.triangles } },
-          { binding: 2, resource: { buffer: resources.materials } },
-          { binding: 3, resource: { buffer: resources.lights } },
-          { binding: 4, resource: resources.materialTextures },
-          { binding: 5, resource: resources.materialLinearTextures },
-          { binding: 6, resource: resources.sampler },
-          { binding: 7, resource: resources.environmentTexture },
-          { binding: 8, resource: resources.backplateTexture }
-        ]
-      });
-    }
-    encode(frame) {
-      if (!Number.isSafeInteger(frame.triangleCount) || frame.triangleCount < 0) {
-        throw new RangeError("Raster triangle count must be a non-negative safe integer.");
-      }
-      const vertexCount = frame.triangleCount * 3;
-      if (!Number.isSafeInteger(vertexCount) || vertexCount > 4294967295) {
-        throw new RangeError("Raster vertex count exceeds the WebGPU draw limit.");
-      }
-      const pass = frame.encoder.beginRenderPass({
-        label: "PrioSDK traditional raster pass",
-        colorAttachments: [
-          colorAttachment(frame.targets.hdr, { r: 0, g: 0, b: 0, a: 1 }),
-          colorAttachment(frame.targets.normalDepth, { r: 0, g: 0, b: 0, a: 65504 }),
-          colorAttachment(frame.targets.albedoRoughness, { r: 0, g: 0, b: 0, a: 1 }),
-          colorAttachment(frame.targets.motionReactive, { r: 0, g: 0, b: 0, a: 65504 })
-        ],
-        depthStencilAttachment: {
-          view: frame.targets.depth,
-          depthClearValue: 1,
-          depthLoadOp: "clear",
-          depthStoreOp: "store"
-        }
-      });
-      pass.setBindGroup(0, frame.bindGroup);
-      pass.setPipeline(this.#backgroundPipeline);
-      pass.draw(3);
-      if (vertexCount > 0) {
-        pass.setPipeline(this.#geometryPipeline);
-        pass.draw(vertexCount);
-      }
-      pass.end();
-    }
-  };
-  function colorAttachment(view, clearValue) {
-    return {
-      view,
-      clearValue,
-      loadOp: "clear",
-      storeOp: "store"
-    };
-  }
-  async function assertShaderCompiles(module) {
-    const compilation = await module.getCompilationInfo();
-    const errors = compilation.messages.filter((message) => message.type === "error");
-    if (errors.length === 0) return;
-    const details = errors.slice(0, 6).map((message) => `${message.lineNum}:${message.linePos} ${message.message}`).join("; ");
-    throw new Error(`WebGPU traditional raster shader failed to compile: ${details}`);
-  }
 
   // src/renderer/scene/packing.ts
   var TRIANGLE_GPU_STRIDE = 128;
@@ -12728,6 +12657,7 @@ fn raster_fragment(
   var MATERIAL_TEXTURE_FLAG_LUMINANCE_ROUGHNESS = 1 << 2;
   var MATERIAL_TEXTURE_FLAG_INDEPENDENT_NORMAL = 1 << 3;
   var MATERIAL_TEXTURE_FLAG_INDEPENDENT_ROUGHNESS = 1 << 4;
+  var MATERIAL_TEXTURE_FLAG_PACKED_METALLIC_ROUGHNESS = 1 << 5;
   var LIGHT_FLAG_CAST_SHADOW = 1;
   var LIGHT_TYPE_POINT = 0;
   var LIGHT_TYPE_DIRECTIONAL = 1;
@@ -13109,7 +13039,7 @@ fn raster_fragment(
         throw new RangeError(`materials[${index}] atlas tile is outside normalized texture bounds`);
       }
     }
-    for (const [name, value] of [
+    for (const [name2, value] of [
       ["roughness", material.roughness],
       ["metallic", material.metallic],
       ["emissionStrength", material.emissionStrength],
@@ -13126,7 +13056,7 @@ fn raster_fragment(
       ["textureRoughnessStrength", material.textureRoughnessStrength],
       ["textureLod", material.textureLod]
     ]) {
-      assertFiniteGpuNumber(value, `materials[${index}].${name}`);
+      assertFiniteGpuNumber(value, `materials[${index}].${name2}`);
     }
     if (material.textureStrength < 0 || material.textureStrength > 1) {
       throw new RangeError(`materials[${index}].textureStrength must be from 0 through 1`);
@@ -13225,6 +13155,362 @@ fn raster_fragment(
     return triangleCount * TRIANGLE_GPU_STRIDE + bvhNodeCount * BVH_NODE_GPU_STRIDE + materialCount * MATERIAL_GPU_STRIDE + lightCount * LIGHT_GPU_STRIDE + ANIMATED_SHADOW_BVH_HEADER_BYTES + animatedBvhNodeCount * ANIMATED_SHADOW_BVH_NODE_GPU_STRIDE + animatedTriangleCount * (Uint32Array.BYTES_PER_ELEMENT + ANIMATED_SHADOW_TRIANGLE_GPU_STRIDE);
   }
 
+  // src/renderer/raster-shadows.ts
+  var RASTER_SHADOW_UNIFORM_BYTES = 80;
+  function rasterShadowParameters(bounds, lights, resolution2) {
+    const result = new Float32Array(RASTER_SHADOW_UNIFORM_BYTES / 4);
+    result[0] = result[5] = result[10] = result[15] = 1;
+    if (!bounds || resolution2 === 0) return result;
+    if (![1024, 2048, 4096].includes(resolution2)) throw new RangeError("Unsupported raster shadow resolution.");
+    if (lights.byteLength % LIGHT_GPU_STRIDE !== 0) throw new RangeError("Invalid packed light buffer.");
+    const values = new DataView(lights);
+    let index = -1;
+    for (let offset = 0; offset < lights.byteLength; offset += LIGHT_GPU_STRIDE) {
+      if (values.getUint32(offset + 12, true) !== 0 && (values.getUint32(offset + 40, true) & LIGHT_FLAG_CAST_SHADOW) !== 0) {
+        index = offset / LIGHT_GPU_STRIDE;
+        break;
+      }
+    }
+    if (index < 0) return result;
+    const direction = [0, 1, 2].map((axis2) => values.getFloat32(index * LIGHT_GPU_STRIDE + axis2 * 4, true));
+    const length = Math.hypot(...direction);
+    if (!Number.isFinite(length) || length < 1e-8) throw new RangeError("Invalid shadow light direction.");
+    const forward = direction.map((value) => value / length);
+    const axis = Math.abs(forward[1]) > 0.95 ? [0, 0, 1] : [0, 1, 0];
+    const right = cross(axis, forward);
+    const rightLength = Math.hypot(...right);
+    for (let i = 0; i < 3; i++) right[i] = right[i] / rightLength;
+    const up = cross(forward, right);
+    const center2 = [0, 0, 0];
+    const extent = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+      const low = bounds.min[i];
+      const high = bounds.max[i];
+      if (!Number.isFinite(low) || !Number.isFinite(high) || low > high) throw new RangeError("Invalid shadow scene bounds.");
+      center2[i] = (low + high) * 0.5;
+      extent[i] = Math.max(0.01, (high - low) * 0.5) + MAX_WIND_DISPLACEMENT;
+    }
+    const projectionExtent = (basis) => Math.abs(basis[0]) * extent[0] + Math.abs(basis[1]) * extent[1] + Math.abs(basis[2]) * extent[2] + 0.01;
+    const halfX = projectionExtent(right);
+    const halfY = projectionExtent(up);
+    const depth = projectionExtent(forward) * 2;
+    const stepX = 2 * halfX / resolution2;
+    const stepY = 2 * halfY / resolution2;
+    const snappedX = Math.round(dot(right, center2) / stepX) * stepX;
+    const snappedY = Math.round(dot(up, center2) / stepY) * stepY;
+    for (let i = 0; i < 3; i++) {
+      result[i * 4] = right[i] / halfX;
+      result[i * 4 + 1] = up[i] / halfY;
+      result[i * 4 + 2] = forward[i] / depth;
+    }
+    result[12] = -snappedX / halfX;
+    result[13] = -snappedY / halfY;
+    result[14] = 0.5 - dot(forward, center2) / depth;
+    result[16] = 1;
+    result[17] = index;
+    result[18] = 1 / resolution2;
+    result[19] = Math.max(2e-5, Math.max(stepX, stepY) * 0.15 / depth);
+    if (result.some((value) => !Number.isFinite(value))) throw new RangeError("Shadow projection exceeds finite GPU range.");
+    return result;
+  }
+  function dot(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+  function cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+
+  // src/renderer/raster-pipeline.ts
+  var RASTER_DEPTH_FORMAT = "depth32float";
+  var RASTER_COLOR_FORMATS = Object.freeze([
+    "rgba16float",
+    "rgba16float",
+    "rgba8unorm",
+    "rgba16float"
+  ]);
+  var RASTERIZATION_LIMITATIONS = Object.freeze([
+    "analytic sphere primitives require a triangle mesh in raster mode",
+    "one shadow-casting directional light uses a filtered depth shadow map; other lights remain unshadowed and finite light radius is not area-sampled",
+    "fog, volumetric clouds, and path-traced indirect lighting remain trace-mode features",
+    "non-foliage transmission is an environment approximation without refraction or order-independent transparency",
+    "alpha and transmission surfaces use cutout depth writes rather than sorted translucent blending"
+  ]);
+  var RasterPipeline = class _RasterPipeline {
+    #device;
+    #bindGroupLayout;
+    #backgroundPipeline;
+    #geometryPipeline;
+    #shadowPipeline;
+    #shadowLayout;
+    #shadowUniform;
+    #shadowSampler;
+    #shadowDrawGroup;
+    #shadowTexture = null;
+    #shadowView = null;
+    #shadowSampleGroup = null;
+    #shadowResolution = 2048;
+    #allocatedShadowResolution = 0;
+    #shadowBounds;
+    #shadowLights = new ArrayBuffer(0);
+    constructor(device, bindGroupLayout, backgroundPipeline, geometryPipeline, shadowPipeline, shadowLayout, shadowDrawLayout) {
+      this.#device = device;
+      this.#bindGroupLayout = bindGroupLayout;
+      this.#backgroundPipeline = backgroundPipeline;
+      this.#geometryPipeline = geometryPipeline;
+      this.#shadowPipeline = shadowPipeline;
+      this.#shadowLayout = shadowLayout;
+      this.#shadowUniform = device.createBuffer({ label: "PrioSDK raster shadow parameters", size: RASTER_SHADOW_UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.#shadowSampler = device.createSampler({ compare: "less-equal", magFilter: "linear", minFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
+      this.#shadowDrawGroup = device.createBindGroup({ label: "PrioSDK shadow draw parameters", layout: shadowDrawLayout, entries: [{ binding: 0, resource: { buffer: this.#shadowUniform } }] });
+    }
+    static async create(device, options = {}) {
+      assertRasterCreationActive(options.signal);
+      options.onProgress?.("Validating raster shader");
+      assertRasterCreationActive(options.signal);
+      const module = device.createShaderModule({
+        label: "PrioSDK traditional raster shader",
+        code: RASTER_SHADER
+      });
+      await abortableRasterCreation(assertShaderCompiles(module), options.signal);
+      assertRasterCreationActive(options.signal);
+      const compile = async (descriptor, label) => {
+        assertRasterCreationActive(options.signal);
+        options.onProgress?.(label);
+        assertRasterCreationActive(options.signal);
+        const pipeline = await abortableRasterCreation(device.createRenderPipelineAsync(descriptor), options.signal);
+        assertRasterCreationActive(options.signal);
+        return pipeline;
+      };
+      const vertexVisibility = GPUShaderStage.VERTEX;
+      const fragmentVisibility = GPUShaderStage.FRAGMENT;
+      const bindGroupLayout = device.createBindGroupLayout({
+        label: "PrioSDK traditional raster resource layout",
+        entries: [
+          { binding: 0, visibility: vertexVisibility | fragmentVisibility, buffer: { type: "uniform" } },
+          { binding: 1, visibility: vertexVisibility, buffer: { type: "read-only-storage" } },
+          { binding: 2, visibility: fragmentVisibility, buffer: { type: "read-only-storage" } },
+          { binding: 3, visibility: fragmentVisibility, buffer: { type: "read-only-storage" } },
+          { binding: 4, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d-array" } },
+          { binding: 5, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d-array" } },
+          { binding: 6, visibility: fragmentVisibility, sampler: { type: "filtering" } },
+          { binding: 7, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d" } },
+          { binding: 8, visibility: fragmentVisibility, texture: { sampleType: "float", viewDimension: "2d" } }
+        ]
+      });
+      const shadowUniformEntry = { binding: 0, visibility: vertexVisibility | fragmentVisibility, buffer: { type: "uniform" } };
+      const shadowLayout = device.createBindGroupLayout({ label: "PrioSDK raster shadow sampling layout", entries: [
+        shadowUniformEntry,
+        { binding: 1, visibility: fragmentVisibility, texture: { sampleType: "depth" } },
+        { binding: 2, visibility: fragmentVisibility, sampler: { type: "comparison" } }
+      ] });
+      const shadowDrawLayout = device.createBindGroupLayout({ label: "PrioSDK raster shadow draw layout", entries: [shadowUniformEntry] });
+      const pipelineLayout = device.createPipelineLayout({
+        label: "PrioSDK traditional raster pipeline layout",
+        bindGroupLayouts: [bindGroupLayout, shadowLayout]
+      });
+      const fragmentTargets = RASTER_COLOR_FORMATS.map((format) => ({ format }));
+      const primitive = {
+        topology: "triangle-list",
+        frontFace: "ccw",
+        cullMode: "none"
+      };
+      const backgroundPipeline = await compile({
+        label: "PrioSDK environment background raster pipeline",
+        layout: pipelineLayout,
+        vertex: { module, entryPoint: "background_vertex" },
+        fragment: { module, entryPoint: "background_fragment", targets: fragmentTargets },
+        primitive,
+        depthStencil: {
+          format: RASTER_DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: "always"
+        }
+      }, "Compiling raster 1/3: environment background");
+      const geometryPipeline = await compile({
+        label: "PrioSDK traditional triangle raster pipeline",
+        layout: pipelineLayout,
+        vertex: { module, entryPoint: "raster_vertex" },
+        fragment: { module, entryPoint: "raster_fragment", targets: fragmentTargets },
+        primitive,
+        depthStencil: {
+          format: RASTER_DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: "less"
+        }
+      }, "Compiling raster 2/3: triangle geometry");
+      const shadowPipeline = await compile({
+        label: "PrioSDK directional shadow depth pipeline",
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bindGroupLayout, shadowDrawLayout] }),
+        vertex: { module, entryPoint: "shadow_vertex" },
+        fragment: { module, entryPoint: "shadow_fragment", targets: [] },
+        primitive,
+        depthStencil: { format: RASTER_DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 }
+      }, "Compiling raster 3/3: directional shadow");
+      assertRasterCreationActive(options.signal);
+      return new _RasterPipeline(
+        device,
+        bindGroupLayout,
+        backgroundPipeline,
+        geometryPipeline,
+        shadowPipeline,
+        shadowLayout,
+        shadowDrawLayout
+      );
+    }
+    createBindGroup(resources) {
+      return this.#device.createBindGroup({
+        label: "PrioSDK traditional raster resources",
+        layout: this.#bindGroupLayout,
+        entries: [
+          { binding: 0, resource: { buffer: resources.uniforms } },
+          { binding: 1, resource: { buffer: resources.triangles } },
+          { binding: 2, resource: { buffer: resources.materials } },
+          { binding: 3, resource: { buffer: resources.lights } },
+          { binding: 4, resource: resources.materialTextures },
+          { binding: 5, resource: resources.materialLinearTextures },
+          { binding: 6, resource: resources.sampler },
+          { binding: 7, resource: resources.environmentTexture },
+          { binding: 8, resource: resources.backplateTexture }
+        ]
+      });
+    }
+    encode(frame) {
+      if (!Number.isSafeInteger(frame.triangleCount) || frame.triangleCount < 0) {
+        throw new RangeError("Raster triangle count must be a non-negative safe integer.");
+      }
+      const vertexCount = frame.triangleCount * 3;
+      if (!Number.isSafeInteger(vertexCount) || vertexCount > 4294967295) {
+        throw new RangeError("Raster vertex count exceeds the WebGPU draw limit.");
+      }
+      const shadowParameters = rasterShadowParameters(this.#shadowBounds, this.#shadowLights, this.#shadowResolution);
+      this.#ensureShadowResources(shadowParameters[16] === 1);
+      this.#device.queue.writeBuffer(this.#shadowUniform, 0, shadowParameters);
+      const shadowPass = frame.encoder.beginRenderPass({
+        label: "PrioSDK directional shadow depth pass",
+        colorAttachments: [],
+        depthStencilAttachment: { view: this.#shadowView, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" }
+      });
+      if (shadowParameters[16] === 1 && vertexCount > 0) {
+        shadowPass.setPipeline(this.#shadowPipeline);
+        shadowPass.setBindGroup(0, frame.bindGroup);
+        shadowPass.setBindGroup(1, this.#shadowDrawGroup);
+        shadowPass.draw(vertexCount);
+      }
+      shadowPass.end();
+      const pass = frame.encoder.beginRenderPass({
+        label: "PrioSDK traditional raster pass",
+        colorAttachments: [
+          colorAttachment(frame.targets.hdr, { r: 0, g: 0, b: 0, a: 1 }),
+          colorAttachment(frame.targets.normalDepth, { r: 0, g: 0, b: 0, a: 65504 }),
+          colorAttachment(frame.targets.albedoRoughness, { r: 0, g: 0, b: 0, a: 1 }),
+          colorAttachment(frame.targets.motionReactive, { r: 0, g: 0, b: 0, a: 65504 })
+        ],
+        depthStencilAttachment: {
+          view: frame.targets.depth,
+          depthClearValue: 1,
+          depthLoadOp: "clear",
+          depthStoreOp: "store"
+        }
+      });
+      pass.setBindGroup(0, frame.bindGroup);
+      pass.setBindGroup(1, this.#shadowSampleGroup);
+      pass.setPipeline(this.#backgroundPipeline);
+      pass.draw(3);
+      if (vertexCount > 0) {
+        pass.setPipeline(this.#geometryPipeline);
+        pass.draw(vertexCount);
+      }
+      pass.end();
+    }
+    updateScene(packed) {
+      const bounds = packed.bvh.nodes[0];
+      this.#shadowBounds = bounds ? { min: [...bounds.min], max: [...bounds.max] } : void 0;
+      this.#shadowLights = packed.lights.slice(0);
+    }
+    setShadowResolution(resolution2) {
+      if (![0, 1024, 2048, 4096].includes(resolution2)) throw new RangeError("Raster shadows support off, 1024, 2048, or 4096.");
+      const limit = this.#device.limits?.maxTextureDimension2D ?? 8192;
+      if (resolution2 > limit) throw new RangeError(`Requested shadow map ${resolution2} exceeds this GPU limit ${limit}.`);
+      this.#shadowResolution = resolution2;
+    }
+    getShadowStatus() {
+      return {
+        resolution: this.#shadowResolution,
+        allocatedBytes: this.#allocatedShadowResolution ** 2 * 4,
+        directionalLights: rasterShadowParameters(this.#shadowBounds, this.#shadowLights, this.#shadowResolution)[16] ?? 0
+      };
+    }
+    destroy() {
+      this.#shadowTexture?.destroy();
+      this.#shadowTexture = null;
+      this.#shadowView = null;
+      this.#shadowSampleGroup = null;
+      this.#allocatedShadowResolution = 0;
+      this.#shadowUniform.destroy();
+    }
+    #ensureShadowResources(enabled) {
+      const resolution2 = enabled ? this.#shadowResolution || 1 : 1;
+      if (this.#allocatedShadowResolution === resolution2) return;
+      const replacement = this.#device.createTexture({ label: "PrioSDK raster directional shadow depth", size: [resolution2, resolution2], format: RASTER_DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      const view = replacement.createView();
+      let group;
+      try {
+        group = this.#device.createBindGroup({ label: "PrioSDK raster shadow sampling", layout: this.#shadowLayout, entries: [
+          { binding: 0, resource: { buffer: this.#shadowUniform } },
+          { binding: 1, resource: view },
+          { binding: 2, resource: this.#shadowSampler }
+        ] });
+      } catch (error) {
+        replacement.destroy();
+        throw error;
+      }
+      this.#shadowTexture?.destroy();
+      this.#shadowTexture = replacement;
+      this.#shadowView = view;
+      this.#shadowSampleGroup = group;
+      this.#allocatedShadowResolution = resolution2;
+    }
+  };
+  function assertRasterCreationActive(signal) {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("Raster compilation was cancelled.", "AbortError");
+    }
+  }
+  function abortableRasterCreation(operation, signal) {
+    if (signal === void 0) return operation;
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(signal.reason ?? new DOMException("Raster compilation was cancelled.", "AbortError"));
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      void operation.then((value) => {
+        signal.removeEventListener("abort", abort);
+        if (signal.aborted) abort();
+        else resolve(value);
+      }, (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      });
+      if (signal.aborted) abort();
+    });
+  }
+  function colorAttachment(view, clearValue) {
+    return {
+      view,
+      clearValue,
+      loadOp: "clear",
+      storeOp: "store"
+    };
+  }
+  async function assertShaderCompiles(module) {
+    const compilation = await module.getCompilationInfo();
+    const errors = compilation.messages.filter((message) => message.type === "error");
+    if (errors.length === 0) return;
+    const details = errors.slice(0, 6).map((message) => `${message.lineNum}:${message.linePos} ${message.message}`).join("; ");
+    throw new Error(`WebGPU traditional raster shader failed to compile: ${details}`);
+  }
+
   // src/renderer/texture/handles.ts
   var TEXTURE_HANDLE_PATTERN = /^texture:([a-z0-9]+):(\d+):(\d+)$/;
   var nextTextureOwner = 1;
@@ -13293,14 +13579,14 @@ fn raster_fragment(
       this.#size = 0;
     }
     entries() {
-      const entries = [];
+      const entries2 = [];
       for (let index = 0; index < this.#slots.length; index += 1) {
         const slot = this.#slots[index];
         if (slot?.value !== null && slot?.value !== void 0) {
-          entries.push({ handle: this.#format(index, slot.generation), value: slot.value });
+          entries2.push({ handle: this.#format(index, slot.generation), value: slot.value });
         }
       }
-      return entries;
+      return entries2;
     }
     #format(slot, generation) {
       return `texture:${this.#owner}:${slot}:${generation}`;
@@ -14118,7 +14404,7 @@ fn raster_fragment(
       rotationDegrees,
       pitchDegrees
     );
-    return dot(worldSun, normalizedLight) >= Math.cos(profile.alignmentToleranceRadians);
+    return dot2(worldSun, normalizedLight) >= Math.cos(profile.alignmentToleranceRadians);
   }
   async function createSunlessEnvironmentBaseAsync(rgba, width, height, targetWidth, targetHeight, profile, options = {}) {
     requireSunlessDimensions(rgba, width, height, targetWidth, targetHeight);
@@ -14294,8 +14580,8 @@ fn raster_fragment(
   }
   function sampleTrimmedRing(rgba, width, height, direction, radius) {
     const helper = Math.abs(direction[1]) > 0.98 ? [1, 0, 0] : [0, 1, 0];
-    const tangent = normalize(cross(helper, direction));
-    const bitangent = cross(direction, tangent);
+    const tangent = normalize(cross2(helper, direction));
+    const bitangent = cross2(direction, tangent);
     const channels = [[], [], []];
     const radialScale = Math.tan(radius);
     for (let sample = 0; sample < RING_SAMPLE_COUNT; sample += 1) {
@@ -14371,30 +14657,30 @@ fn raster_fragment(
   function luminance(color2) {
     return color2[0] * 0.2126 + color2[1] * 0.7152 + color2[2] * 0.0722;
   }
-  function normalize(vector) {
-    const result = normalizeOrNull(vector);
+  function normalize(vector2) {
+    const result = normalizeOrNull(vector2);
     return result ?? [1, 0, 0];
   }
-  function normalizeOrNull(vector) {
-    const length = Math.hypot(vector[0], vector[1], vector[2]);
+  function normalizeOrNull(vector2) {
+    const length = Math.hypot(vector2[0], vector2[1], vector2[2]);
     if (!Number.isFinite(length) || length <= 1e-12) return null;
-    return [vector[0] / length, vector[1] / length, vector[2] / length];
+    return [vector2[0] / length, vector2[1] / length, vector2[2] / length];
   }
-  function cross(left, right) {
+  function cross2(left, right) {
     return [
       left[1] * right[2] - left[2] * right[1],
       left[2] * right[0] - left[0] * right[2],
       left[0] * right[1] - left[1] * right[0]
     ];
   }
-  function dot(left, right) {
+  function dot2(left, right) {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
   }
   function add(left, right) {
     return [left[0] + right[0], left[1] + right[1], left[2] + right[2]];
   }
-  function scale(vector, amount) {
-    return [vector[0] * amount, vector[1] * amount, vector[2] * amount];
+  function scale(vector2, amount) {
+    return [vector2[0] * amount, vector2[1] * amount, vector2[2] * amount];
   }
   function mix2(left, right, amount) {
     return left + (right - left) * amount;
@@ -15770,8 +16056,8 @@ fn raster_fragment(
     maxTextureDimension2D: MATERIAL_TEXTURE_SIZE,
     maxTextureDimension3D: 1,
     maxTextureArrayLayers: MATERIAL_TEXTURE_ARRAY_LAYERS,
-    maxBindGroups: 1,
-    maxBindGroupsPlusVertexBuffers: 1,
+    maxBindGroups: 2,
+    maxBindGroupsPlusVertexBuffers: 2,
     maxBindingsPerBindGroup: 23,
     maxSampledTexturesPerShaderStage: 8,
     maxSamplersPerShaderStage: 2,
@@ -15779,7 +16065,7 @@ fn raster_fragment(
     maxStorageBuffersInVertexStage: 1,
     maxStorageBuffersInFragmentStage: 2,
     maxStorageTexturesPerShaderStage: 4,
-    maxUniformBuffersPerShaderStage: 1,
+    maxUniformBuffersPerShaderStage: 2,
     maxUniformBufferBindingSize: 200 * Float32Array.BYTES_PER_ELEMENT,
     maxStorageBufferBindingSize: MAX_SCENE_TRIANGLES * TRIANGLE_GPU_STRIDE,
     maxBufferSize: MAX_SCENE_TRIANGLES * TRIANGLE_GPU_STRIDE,
@@ -15801,8 +16087,8 @@ fn raster_fragment(
     maxTextureDimension2D: "the fixed material texture array",
     maxTextureDimension3D: "the fallback cloud density texture",
     maxTextureArrayLayers: "the material texture array including its fallback layer",
-    maxBindGroups: "the renderer resource group",
-    maxBindGroupsPlusVertexBuffers: "one resource group with no vertex buffers",
+    maxBindGroups: "the scene and raster shadow resource groups",
+    maxBindGroupsPlusVertexBuffers: "two resource groups with no vertex buffers",
     maxBindingsPerBindGroup: "the complete tracing resource group",
     maxSampledTexturesPerShaderStage: "tracing history, materials, environments, and cloud density",
     maxSamplersPerShaderStage: "material and cloud sampling",
@@ -15810,7 +16096,7 @@ fn raster_fragment(
     maxStorageBuffersInVertexStage: "raster triangle data",
     maxStorageBuffersInFragmentStage: "raster materials and lights",
     maxStorageTexturesPerShaderStage: "tracing radiance and three guide outputs",
-    maxUniformBuffersPerShaderStage: "frame parameters",
+    maxUniformBuffersPerShaderStage: "frame and raster shadow parameters",
     maxUniformBufferBindingSize: "the complete frame uniform buffer",
     maxStorageBufferBindingSize: "the fixed triangle storage binding",
     maxBufferSize: "the fixed triangle storage allocation",
@@ -15846,6 +16132,28 @@ fn raster_fragment(
       });
     }
     return issues;
+  }
+
+  // src/renderer/core/offline-scheduling.ts
+  var MAX_FENCE_BATCH = 16;
+  var OFFLINE_PAINT_INTERVAL_MS = 50;
+  function normalizedFenceBatch(value, maximum) {
+    return Number.isFinite(value) ? Math.min(maximum, Math.max(1, Math.floor(value))) : 1;
+  }
+  function adjustOfflineFenceBatch(current, elapsedMs, max = MAX_FENCE_BATCH) {
+    const maximum = normalizedFenceBatch(max, MAX_FENCE_BATCH);
+    const batch = normalizedFenceBatch(current, maximum);
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return 1;
+    if (elapsedMs < 4) return Math.min(maximum, batch * 2);
+    if (elapsedMs > 16) return Math.max(1, Math.floor(batch / 2));
+    return batch;
+  }
+  function shouldYieldOfflinePaint(lastPaintMs, now, tilesSincePaint, minTiles) {
+    if (!Number.isFinite(tilesSincePaint) || tilesSincePaint < 1) return false;
+    const minimum = Number.isFinite(minTiles) ? Math.max(1, Math.floor(minTiles)) : 1;
+    if (Math.floor(tilesSincePaint) < minimum) return false;
+    if (!Number.isFinite(lastPaintMs) || !Number.isFinite(now) || now < lastPaintMs) return true;
+    return now - lastPaintMs >= OFFLINE_PAINT_INTERVAL_MS;
   }
 
   // src/renderer/display-shaders.ts
@@ -18277,8 +18585,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       );
       this.#resetExposure();
     }
-    static async create(device) {
-      const entries = [
+    static async create(device, options = {}) {
+      const entries2 = [
         ["denoise", ATROUS_DENOISE_SHADER],
         ["learnedEnhancement", LEARNED_ENHANCEMENT_SHADER],
         ["temporal", TEMPORAL_REPROJECTION_UPSCALE_SHADER],
@@ -18291,47 +18599,25 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         ["opticalFlow", EXPERIMENTAL_OPTICAL_FLOW_FALLBACK_SHADER],
         ["frameInterpolation", EXPERIMENTAL_FRAME_INTERPOLATION_RGBA16FLOAT_SHADER]
       ];
-      const modules = /* @__PURE__ */ new Map();
-      await Promise.all(entries.map(async ([name, code]) => {
-        const module = device.createShaderModule({ label: `PrioSDK ${name} shader`, code });
-        await assertShaderCompiles2(module, name);
-        modules.set(name, module);
-      }));
-      const create = async (name) => {
-        const module = modules.get(name);
-        if (module === void 0) throw new Error(`Missing post-process shader module: ${name}.`);
-        return device.createComputePipelineAsync({
-          label: `PrioSDK ${name} pipeline`,
+      const pipelines = {};
+      for (const [index, [name2, code]] of entries2.entries()) {
+        assertCreationActive(options.signal);
+        options.onProgress?.(`Validating image processing ${index + 1}/${entries2.length}: ${name2}`);
+        assertCreationActive(options.signal);
+        const module = device.createShaderModule({ label: `PrioSDK ${name2} shader`, code });
+        await abortableCreation(assertShaderCompiles2(module, name2), options.signal);
+        assertCreationActive(options.signal);
+        options.onProgress?.(`Compiling image processing ${index + 1}/${entries2.length}: ${name2}`);
+        assertCreationActive(options.signal);
+        const pipeline = await abortableCreation(device.createComputePipelineAsync({
+          label: `PrioSDK ${name2} pipeline`,
           layout: "auto",
           compute: { module, entryPoint: "main" }
-        });
-      };
-      const [denoise, learnedEnhancement, temporal, fsr1Easu, fsr1Rcas, exposure, display, outputStyle, photographic, opticalFlow, frameInterpolation] = await Promise.all([
-        create("denoise"),
-        create("learnedEnhancement"),
-        create("temporal"),
-        create("fsr1Easu"),
-        create("fsr1Rcas"),
-        create("exposure"),
-        create("display"),
-        create("outputStyle"),
-        create("photographic"),
-        create("opticalFlow"),
-        create("frameInterpolation")
-      ]);
-      return new _FramePipeline(device, {
-        denoise,
-        learnedEnhancement,
-        temporal,
-        fsr1Easu,
-        fsr1Rcas,
-        exposure,
-        display,
-        outputStyle,
-        photographic,
-        opticalFlow,
-        frameInterpolation
-      });
+        }), options.signal);
+        Object.assign(pipelines, { [name2]: pipeline });
+      }
+      assertCreationActive(options.signal);
+      return new _FramePipeline(device, pipelines);
     }
     resize(renderWidth, renderHeight, outputWidth, outputHeight) {
       if (this.#targets !== null && renderWidth === this.#renderWidth && renderHeight === this.#renderHeight && outputWidth === this.#outputWidth && outputHeight === this.#outputHeight) {
@@ -18362,6 +18648,21 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       }
       previousLearnedEnhancementTarget?.texture.destroy();
       this.resetHistory();
+    }
+    encodePreview(inputs) {
+      const targets = this.#targets;
+      if (targets === null) throw new Error("Post-process targets have not been sized.");
+      const destination = targets.display.views[this.#displayActive === 0 ? 1 : 0];
+      this.#encodeDisplay(
+        { ...inputs, settings: { ...inputs.settings, autoExposure: false } },
+        inputs.hdrView,
+        destination,
+        this.#renderWidth,
+        this.#renderHeight,
+        this.#outputWidth,
+        this.#outputHeight
+      );
+      return destination;
     }
     encode(inputs) {
       const targets = this.#targets;
@@ -18959,6 +19260,30 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function createUniformBuffer(device, label, size) {
     return device.createBuffer({ label, size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
+  function assertCreationActive(signal) {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("Image-processing compilation was cancelled.", "AbortError");
+    }
+  }
+  function abortableCreation(operation, signal) {
+    if (signal === void 0) return operation;
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(signal.reason ?? new DOMException("Image-processing compilation was cancelled.", "AbortError"));
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      void operation.then((value) => {
+        signal.removeEventListener("abort", abort);
+        if (signal.aborted) abort();
+        else resolve(value);
+      }, (error) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      });
+      if (signal.aborted) abort();
+    });
+  }
   function createPostTexture(device, label, width, height, format) {
     return device.createTexture({
       label,
@@ -18985,90 +19310,108 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   }
   function createPostTargets(device, renderWidth, renderHeight, outputWidth, outputHeight) {
     const createdTextures = [];
-    const trackedTexture = (label, width, height, format) => {
-      const texture = createPostTexture(device, label, width, height, format);
-      createdTextures.push(texture);
-      return texture;
+    let destroyed = false;
+    const assertAvailable = () => {
+      if (destroyed) throw new Error("Post-process targets have been released.");
     };
-    const trackedPair = (label, width, height) => {
-      const pair = createTexturePair(device, label, width, height, "rgba16float");
-      createdTextures.push(...pair.textures);
-      return pair;
+    const lazyTexture = (label, width, height, format = "rgba16float") => {
+      let cached = null;
+      return () => {
+        assertAvailable();
+        if (cached === null) {
+          const texture = createPostTexture(device, label, width, height, format);
+          try {
+            cached = { texture, view: texture.createView() };
+            createdTextures.push(texture);
+          } catch (error) {
+            texture.destroy();
+            throw error;
+          }
+        }
+        return cached;
+      };
+    };
+    const lazyPair = (label, width, height) => {
+      let cached = null;
+      return () => {
+        assertAvailable();
+        if (cached === null) {
+          cached = createTexturePair(device, label, width, height, "rgba16float");
+          createdTextures.push(...cached.textures);
+        }
+        return cached;
+      };
+    };
+    const denoise = lazyPair("PrioSDK denoise", renderWidth, renderHeight);
+    const temporal = lazyPair("PrioSDK temporal HDR history", outputWidth, outputHeight);
+    const toneMappedRender = lazyTexture("PrioSDK tone-mapped render-resolution color", renderWidth, renderHeight);
+    const fsrIntermediate = lazyTexture("PrioSDK FSR 1 EASU intermediate", outputWidth, outputHeight);
+    const display = lazyPair("PrioSDK display history", outputWidth, outputHeight);
+    const opticalFlow = lazyTexture("PrioSDK experimental optical flow", outputWidth, outputHeight);
+    const interpolation = lazyTexture("PrioSDK experimental interpolated frame", outputWidth, outputHeight);
+    const photographicGenerated = lazyTexture("PrioSDK photographic generated-frame output", outputWidth, outputHeight);
+    const disocclusion = lazyTexture("PrioSDK disocclusion mask", outputWidth, outputHeight, "rgba8unorm");
+    const destroy = () => {
+      if (destroyed) return;
+      destroyed = true;
+      for (const texture of createdTextures) texture.destroy();
+      createdTextures.length = 0;
     };
     try {
-      const denoise = trackedPair("PrioSDK denoise", renderWidth, renderHeight);
-      const temporal = trackedPair("PrioSDK temporal HDR history", outputWidth, outputHeight);
-      const toneMappedRender = trackedTexture(
-        "PrioSDK tone-mapped render-resolution color",
-        renderWidth,
-        renderHeight,
-        "rgba16float"
-      );
-      const fsrIntermediate = trackedTexture(
-        "PrioSDK FSR 1 EASU intermediate",
-        outputWidth,
-        outputHeight,
-        "rgba16float"
-      );
-      const display = trackedPair("PrioSDK display history", outputWidth, outputHeight);
-      const opticalFlow = trackedTexture(
-        "PrioSDK experimental optical flow",
-        outputWidth,
-        outputHeight,
-        "rgba16float"
-      );
-      const interpolation = trackedTexture(
-        "PrioSDK experimental interpolated frame",
-        outputWidth,
-        outputHeight,
-        "rgba16float"
-      );
-      const photographicGenerated = trackedTexture(
-        "PrioSDK photographic generated-frame output",
-        outputWidth,
-        outputHeight,
-        "rgba16float"
-      );
-      const disocclusion = trackedTexture(
-        "PrioSDK disocclusion mask",
-        outputWidth,
-        outputHeight,
-        "rgba8unorm"
-      );
+      const displayTargets = display();
       return {
-        denoise,
-        temporal,
-        toneMappedRender,
-        toneMappedRenderView: toneMappedRender.createView(),
-        fsrIntermediate,
-        fsrIntermediateView: fsrIntermediate.createView(),
-        display,
-        opticalFlow,
-        opticalFlowView: opticalFlow.createView(),
-        interpolation,
-        interpolationView: interpolation.createView(),
-        photographicGenerated,
-        photographicGeneratedView: photographicGenerated.createView(),
-        disocclusion,
-        disocclusionView: disocclusion.createView()
+        destroy,
+        get denoise() {
+          return denoise();
+        },
+        get temporal() {
+          return temporal();
+        },
+        get toneMappedRender() {
+          return toneMappedRender().texture;
+        },
+        get toneMappedRenderView() {
+          return toneMappedRender().view;
+        },
+        get fsrIntermediate() {
+          return fsrIntermediate().texture;
+        },
+        get fsrIntermediateView() {
+          return fsrIntermediate().view;
+        },
+        display: displayTargets,
+        get opticalFlow() {
+          return opticalFlow().texture;
+        },
+        get opticalFlowView() {
+          return opticalFlow().view;
+        },
+        get interpolation() {
+          return interpolation().texture;
+        },
+        get interpolationView() {
+          return interpolation().view;
+        },
+        get photographicGenerated() {
+          return photographicGenerated().texture;
+        },
+        get photographicGeneratedView() {
+          return photographicGenerated().view;
+        },
+        get disocclusion() {
+          return disocclusion().texture;
+        },
+        get disocclusionView() {
+          return disocclusion().view;
+        }
       };
     } catch (error) {
-      for (const texture of createdTextures) {
-        texture.destroy();
-      }
+      destroy();
       throw error;
     }
   }
   function destroyPostTargets(targets) {
-    destroyPair(targets.denoise);
-    destroyPair(targets.temporal);
-    targets.toneMappedRender.destroy();
-    targets.fsrIntermediate.destroy();
-    destroyPair(targets.display);
-    targets.opticalFlow.destroy();
-    targets.interpolation.destroy();
-    targets.photographicGenerated.destroy();
-    targets.disocclusion.destroy();
+    targets.destroy();
   }
   function dispatch(pipeline, bindGroup, encoder, width, height, label) {
     const size = postDispatchSize(width, height);
@@ -19617,14 +19960,14 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.#size = 0;
     }
     entries() {
-      const entries = [];
+      const entries2 = [];
       for (let slotIndex = 0; slotIndex < this.#slots.length; slotIndex += 1) {
         const slot = this.#slots[slotIndex];
         if (slot?.value !== null && slot?.value !== void 0) {
-          entries.push({ slot: slotIndex, handle: this.#format(slotIndex, slot.generation), value: slot.value });
+          entries2.push({ slot: slotIndex, handle: this.#format(slotIndex, slot.generation), value: slot.value });
         }
       }
-      return entries;
+      return entries2;
     }
     handles() {
       return this.entries().map((entry) => entry.handle);
@@ -20435,6 +20778,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   };
   var OfflineRenderCancelledError = class extends Error {
   };
+  var GPU_WAIT_WARNING_MS = 15e3;
+  var GPU_WAIT_TIMEOUT_MS = 18e4;
   var WebGPURenderer = class {
     host;
     scene = new Scene({ maxTriangles: DEFAULT_REALTIME_TRIANGLE_BUDGET });
@@ -20470,6 +20815,15 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     };
     state = "idle";
     message = "Renderer has not been initialized.";
+    selectedAdapter = null;
+    diagnosticPhase = "Not initialized";
+    diagnosticPhaseStarted = diagnosticNow();
+    diagnosticFailure = null;
+    diagnosticLog = [];
+    compilationAbort = null;
+    gpuWaits = /* @__PURE__ */ new Set();
+    tileProgress = null;
+    partialPresentations = 0;
     capabilities = emptyCapabilities();
     settings = cloneSettings(DEFAULT_RENDER_SETTINGS);
     camera = cloneCamera(DEFAULT_CAMERA);
@@ -20484,6 +20838,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     sphereCount = 0;
     sceneDirty = true;
     sceneRevision = 0;
+    scenePreparationGeneration = 0;
+    uploadedSceneRevision = null;
+    uploadedSceneTriangles = 0;
+    lastSubmittedFrameSceneRevision = null;
     scenePreparation = null;
     realtimeStartGeneration = 0;
     skipBeforeTracedFrameListenersOnce = false;
@@ -20551,6 +20909,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     animatedTriangleDeformationPipeline = null;
     animatedTriangleDeformationBindGroup = null;
     rasterPipeline = null;
+    rasterShadowResolution = 2048;
     rasterBindGroup = null;
     presentationPipeline = null;
     framePipeline = null;
@@ -20588,17 +20947,23 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.resetFrameRateMeasurement();
       this.state = "initializing";
       this.clearRenderProgress();
+      this.diagnosticFailure = null;
+      this.diagnosticLog.length = 0;
+      this.compilationAbort = new AbortController();
+      this.selectedAdapter = null;
+      this.setDiagnosticPhase("Checking WebGPU capabilities");
       this.message = "Checking WebGPU capabilities.";
       const generation = ++this.lifecycleGeneration;
       const operation = this.initializeGpu(generation).catch((error) => {
-        if (this.state !== "destroyed" && this.state !== "lost") {
+        if (generation === this.lifecycleGeneration && this.state !== "destroyed" && this.state !== "lost") {
+          this.recordDiagnosticFailure(error);
           this.releaseGpuResources(true);
           if (error instanceof RendererUnavailableError) {
             this.state = "unsupported";
           } else {
             this.state = "error";
           }
-          this.message = errorMessage3(error);
+          this.message = this.diagnosticFailure?.message ?? errorMessage3(error);
         }
         throw error;
       });
@@ -20625,6 +20990,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         return;
       }
       this.state = "running";
+      this.setDiagnosticPhase("Rendering realtime frames");
       this.clearRenderProgress();
       this.renderProgressState = "rendering";
       const startGeneration = ++this.realtimeStartGeneration;
@@ -20644,8 +21010,24 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.offlineRenderGeneration += 1;
       this.readyFrameGeneration += 1;
       this.pendingPreparedReadyFrame = false;
+      this.scenePreparationGeneration += 1;
+      this.scenePreparation = null;
+      this.tileProgress = null;
+      if (this.state === "initializing") {
+        this.lifecycleGeneration += 1;
+        this.initialization = null;
+        this.state = "idle";
+        this.renderProgressState = "stopped";
+        this.message = "Renderer initialization was stopped. Initialize again to retry.";
+        this.cancelGpuWaits(new RendererLifecycleError(this.message));
+        this.releaseGpuResources(true);
+        this.setDiagnosticPhase("Initialization stopped");
+        return;
+      }
+      this.cancelGpuWaits(this.offlineRenderActive ? new OfflineRenderCancelledError("Exact rendering was stopped.") : new RendererLifecycleError("Rendering was stopped."));
       if (this.renderProgressState === "rendering" || this.state === "running") {
         this.renderProgressState = "stopped";
+        this.setDiagnosticPhase("Rendering stopped");
         if (this.renderProgressRequested === null) this.renderProgressCompleted = this.sampleCount;
       }
       this.skipBeforeTracedFrameListenersOnce = false;
@@ -20785,6 +21167,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.state = "destroyed";
       this.message = "Renderer has been destroyed.";
       this.initialization = null;
+      this.scenePreparationGeneration += 1;
+      this.scenePreparation = null;
       this.resetFrameRateMeasurement();
       this.beforeTracedFrameListeners.clear();
       this.presentedFrameListeners.clear();
@@ -20810,9 +21194,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         return `Error \u2014 ${this.message.replace(/\s+/g, " ").slice(0, 180)}`;
       }
       if (this.state === "destroyed") return "Stopped \u2014 renderer unavailable";
-      if (this.state === "initializing") return "Preparing renderer";
+      if (this.state === "initializing") return this.withDiagnosticProgress("Preparing renderer");
       if (this.state === "running" && !this.offlineRenderActive) {
-        return this.settings.mode === "raster" ? `Rendering \u2014 ${this.rasterFrames} frames (continuous)` : `Rendering \u2014 ${this.sampleCount} samples (continuous)`;
+        return this.withDiagnosticProgress(this.settings.mode === "raster" ? `Rendering \u2014 ${this.rasterFrames} frames (continuous)` : `Rendering \u2014 ${this.sampleCount} samples (continuous)`);
       }
       if (this.renderProgressState === "error") return `Error \u2014 ${this.renderProgressError}`;
       const counts = this.renderProgressRequested === null ? `${this.renderProgressCompleted} samples` : `${this.renderProgressCompleted} / ${this.renderProgressRequested} samples`;
@@ -20820,8 +21204,45 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       if (this.renderProgressState === "stopped") {
         return `Stopped \u2014 ${counts}${this.renderProgressStopReason ? ` (${this.renderProgressStopReason})` : ""}`;
       }
-      if (this.renderProgressState === "rendering") return `Rendering \u2014 ${counts}`;
+      if (this.renderProgressState === "rendering") return this.withDiagnosticProgress(`Rendering \u2014 ${counts}`);
       return this.state === "idle" ? "Ready \u2014 initialize the GPU renderer" : "Ready \u2014 not rendering";
+    }
+    getRenderDiagnostics() {
+      const now = diagnosticNow();
+      return {
+        state: this.state,
+        message: this.message,
+        adapter: this.selectedAdapter === null ? null : { ...this.selectedAdapter },
+        phase: { label: this.diagnosticPhase, elapsedMilliseconds: Math.max(0, now - this.diagnosticPhaseStarted) },
+        waiting: [...this.gpuWaits].map((wait) => ({
+          label: wait.label,
+          elapsedMilliseconds: Math.max(0, now - wait.started),
+          stalled: now - wait.started >= GPU_WAIT_WARNING_MS
+        })),
+        failure: this.diagnosticFailure === null ? null : { ...this.diagnosticFailure },
+        log: this.diagnosticLog.map((entry) => ({ ...entry })),
+        samples: this.state === "running" && !this.offlineRenderActive ? { completed: this.sampleCount, requested: null } : { completed: this.renderProgressCompleted, requested: this.renderProgressRequested },
+        partialPresentations: this.partialPresentations,
+        tiles: this.tileProgress === null ? null : { ...this.tileProgress },
+        scene: {
+          revision: this.sceneRevision,
+          uploadedRevision: this.uploadedSceneRevision,
+          lastSubmittedFrameRevision: this.lastSubmittedFrameSceneRevision,
+          preparing: this.scenePreparation !== null,
+          dirty: this.sceneDirty,
+          triangles: this.scene.triangleCount,
+          uploadedTriangles: this.uploadedSceneTriangles,
+          spheres: this.sphereCount,
+          materials: this.scene.materialCount,
+          lights: this.scene.lightCount
+        }
+      };
+    }
+    withDiagnosticProgress(progress) {
+      const diagnostics = this.getRenderDiagnostics();
+      const stalled = diagnostics.waiting.find((wait) => wait.stalled);
+      const detail = this.state === "initializing" || diagnostics.scene.preparing ? `${this.message.replace(/\s+/g, " ").slice(0, 130)} (${Math.floor(diagnostics.phase.elapsedMilliseconds / 1e3)}s)` : diagnostics.tiles !== null ? `${diagnostics.tiles.completed} / ${diagnostics.tiles.total} tiles (${Math.floor(diagnostics.phase.elapsedMilliseconds / 1e3)}s)` : "";
+      return `${progress}${detail ? ` \u2014 ${detail}` : ""}${stalled ? ` \u2014 waiting ${Math.floor(stalled.elapsedMilliseconds / 1e3)}s: ${stalled.label}` : ""}`.slice(0, 320);
     }
     clearRenderProgress() {
       this.readyFrameGeneration += 1;
@@ -20831,6 +21252,103 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.renderProgressRequested = null;
       this.renderProgressError = "";
       this.renderProgressStopReason = "";
+      this.tileProgress = null;
+      this.partialPresentations = 0;
+    }
+    setDiagnosticPhase(label) {
+      if (this.diagnosticPhase === label) return;
+      this.diagnosticPhase = label;
+      this.diagnosticPhaseStarted = diagnosticNow();
+      if (this.state === "initializing") {
+        this.message = label;
+        this.logDiagnostic("info", label);
+      }
+    }
+    logDiagnostic(level, message, phase = this.diagnosticPhase) {
+      const entry = { time: (/* @__PURE__ */ new Date()).toISOString(), level, phase, message: diagnosticText(message, 2048) };
+      this.diagnosticLog.push(entry);
+      if (this.diagnosticLog.length > 64) this.diagnosticLog.shift();
+      console[level](`[PrioSDK] ${phase}: ${entry.message}`);
+    }
+    async beginCompilationStage(label, generation) {
+      this.assertInitializationCurrent(generation);
+      this.setDiagnosticPhase(label);
+      await yieldToBrowserPaint(this.ownerWindow);
+      this.assertInitializationCurrent(generation);
+    }
+    recordAdapter(adapter) {
+      const info = adapter.info;
+      this.selectedAdapter = {
+        preference: "high-performance",
+        vendor: diagnosticText(info?.vendor ?? "", 160),
+        architecture: diagnosticText(info?.architecture ?? "", 160),
+        device: diagnosticText(info?.device ?? "", 160),
+        description: diagnosticText(info?.description ?? "", 240),
+        fallback: fallbackAdapterStatus(adapter)
+      };
+    }
+    recordDiagnosticFailure(error, phase = this.diagnosticPhase) {
+      if (this.diagnosticFailure !== null || error instanceof OfflineRenderCancelledError) return;
+      this.diagnosticFailure = { message: diagnosticText(errorMessage3(error), 2048), phase };
+      this.logDiagnostic("error", this.diagnosticFailure.message, phase);
+    }
+    cancelGpuWaits(error) {
+      for (const wait of [...this.gpuWaits]) wait.cancel(error);
+    }
+    waitForGpu(operation, label, disposeLate) {
+      const generation = this.lifecycleGeneration;
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const wait = {
+          label,
+          started: diagnosticNow(),
+          cancel: (error) => {
+            if (settled) return;
+            settled = true;
+            globalThis.clearTimeout(timeout);
+            globalThis.clearTimeout(warning);
+            this.gpuWaits.delete(wait);
+            reject(error);
+          }
+        };
+        const warning = globalThis.setTimeout(() => {
+          if (!settled && generation === this.lifecycleGeneration) {
+            this.logDiagnostic("warn", `${label} is still waiting after ${GPU_WAIT_WARNING_MS / 1e3}s. Stop to cancel; quality is unchanged.`, label);
+          }
+        }, GPU_WAIT_WARNING_MS);
+        const timeout = globalThis.setTimeout(() => {
+          if (settled) return;
+          if (generation !== this.lifecycleGeneration) {
+            wait.cancel(new RendererLifecycleError("GPU operation was cancelled."));
+            return;
+          }
+          const error = new RendererLifecycleError(`${label} timed out after ${GPU_WAIT_TIMEOUT_MS / 1e3}s without completing. Stop and initialize the renderer to retry; render quality was not changed.`);
+          this.recordDiagnosticFailure(error, label);
+          this.handleRuntimeError(error);
+        }, GPU_WAIT_TIMEOUT_MS);
+        this.gpuWaits.add(wait);
+        void operation.then((value) => {
+          if (settled || generation !== this.lifecycleGeneration || this.state === "destroyed" || this.state === "error" || this.state === "lost") {
+            if (!settled) wait.cancel(new RendererLifecycleError(this.diagnosticFailure?.message ?? "GPU operation was cancelled."));
+            if (disposeLate !== void 0) {
+              try {
+                disposeLate(value);
+              } catch {
+              }
+            }
+            return;
+          }
+          settled = true;
+          globalThis.clearTimeout(timeout);
+          globalThis.clearTimeout(warning);
+          this.gpuWaits.delete(wait);
+          resolve(value);
+        }, (error) => {
+          if (settled) return;
+          if (generation === this.lifecycleGeneration) this.recordDiagnosticFailure(error, label);
+          wait.cancel(error instanceof Error ? error : new Error(errorMessage3(error)));
+        });
+      });
     }
     getStatus() {
       return {
@@ -20932,7 +21450,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         }
         if (material.roughnessTextureLayer === layer) {
           patch.roughnessTextureLayer = NO_TEXTURE_LAYER;
-          textureFlags &= ~MATERIAL_TEXTURE_FLAG_INDEPENDENT_ROUGHNESS;
+          textureFlags &= ~(MATERIAL_TEXTURE_FLAG_INDEPENDENT_ROUGHNESS | MATERIAL_TEXTURE_FLAG_PACKED_METALLIC_ROUGHNESS);
         }
         if (Object.keys(patch).length === 0) continue;
         patch.textureFlags = textureFlags >>> 0;
@@ -21157,6 +21675,16 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     getTriangleBudget() {
       return this.scene.limits.maxTriangles;
     }
+    setRasterShadowResolution(resolution2) {
+      if (![0, 1024, 2048, 4096].includes(resolution2)) throw new RangeError("Raster shadows support off, 1024, 2048, or 4096.");
+      if (resolution2 === this.rasterShadowResolution) return;
+      this.rasterPipeline?.setShadowResolution(resolution2);
+      this.rasterShadowResolution = resolution2;
+      if (this.settings.mode === "raster") this.resetAccumulationState(false);
+    }
+    getRasterShadowStatus() {
+      return this.rasterPipeline?.getShadowStatus() ?? { resolution: this.rasterShadowResolution, allocatedBytes: 0, directionalLights: 0 };
+    }
     setTriangleBudget(maxTriangles) {
       this.ensureMutable();
       this.scene.setMaxTriangles(maxTriangles);
@@ -21166,7 +21694,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       if (device === null) {
         return;
       }
-      await device.queue.onSubmittedWorkDone();
+      await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Completing GPU rendering and presentation");
     }
     async renderSamples(sampleCount, samplesPerBatch = 8) {
       this.ensureMutable();
@@ -21198,6 +21726,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.renderProgressCompleted = 0;
         this.renderProgressRequested = 0;
         this.renderProgressError = "";
+        this.setDiagnosticPhase("Done");
         return this.sampleCount;
       }
       if (this.adaptiveConvergenceMayHaveSkipped) {
@@ -21238,6 +21767,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         );
         assertOperationCurrent();
         this.offlineAccumulationLocked = true;
+        this.setDiagnosticPhase("Rendering exact samples");
         if (ownsPreparationStatus()) {
           this.message = this.exactRenderStatusMessage();
         }
@@ -21304,9 +21834,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.frameSampleOverride = previousOverride;
         this.suppressFpsMeasurement = previousSuppression;
         this.renderProgressState = "done";
+        this.setDiagnosticPhase("Done");
         return resultingSampleCount;
       } catch (error) {
         if (!(error instanceof OfflineRenderCancelledError)) {
+          this.recordDiagnosticFailure(error);
           this.renderProgressState = "error";
           this.renderProgressError = errorMessage3(error).replace(/\s+/g, " ").slice(0, 180);
           throw error;
@@ -21315,6 +21847,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.renderProgressState = "stopped";
         return this.sampleCount;
       } finally {
+        this.tileProgress = null;
         this.offlineRenderActive = false;
         this.offlineAccumulationLocked = false;
         this.offlineFrameDispatch = false;
@@ -21330,6 +21863,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         if (wasRunning && this.state === "running") {
           this.clearRenderProgress();
           this.renderProgressState = "rendering";
+          this.setDiagnosticPhase("Rendering realtime frames");
           if (hadRealtimeFrameGeneration) {
             this.pendingPresentationView = null;
             try {
@@ -21808,14 +22342,21 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         throw new RendererUnavailableError("WebGPU is not available in this browser.");
       }
       this.capabilities = { ...this.capabilities, webGPU: true };
-      const adapter = await gpu.requestAdapter({ powerPreference: "high-performance" });
+      this.setDiagnosticPhase("Selecting WebGPU adapter");
+      this.message = "Requesting a high-performance WebGPU adapter.";
+      const adapter = await this.waitForGpu(
+        gpu.requestAdapter({ powerPreference: "high-performance" }),
+        "Selecting WebGPU adapter"
+      );
       this.assertInitializationCurrent(generation);
       if (adapter === null) {
         this.markUnavailable("adapter");
         throw new RendererUnavailableError("No compatible WebGPU adapter was found.");
       }
       this.adapter = adapter;
-      this.message = "High-performance GPU found. Requesting the rendering device.";
+      this.recordAdapter(adapter);
+      this.setDiagnosticPhase("Requesting WebGPU device");
+      this.message = `WebGPU adapter selected${this.selectedAdapter?.description ? `: ${this.selectedAdapter.description}` : ""}. Requesting the rendering device.`;
       this.capabilities = {
         ...this.capabilities,
         adapter: true,
@@ -21829,7 +22370,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.markUnavailable("storage-resources");
         throw new RendererUnavailableError(`The WebGPU adapter cannot run the required pipelines: ${adapterLimitIssues.map((issue) => issue.message).join("; ")}`);
       }
-      const device = await adapter.requestDevice({ label: "PrioSDK Gen 4 rendering device" });
+      const device = await this.waitForGpu(
+        adapter.requestDevice({ label: "PrioSDK Gen 4 rendering device" }),
+        "Requesting WebGPU device",
+        (lateDevice) => lateDevice.destroy()
+      );
       if (generation !== this.lifecycleGeneration || this.state === "destroyed") {
         device.destroy();
         throw new RendererLifecycleError("Renderer initialization was cancelled.");
@@ -21841,6 +22386,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         throw new RendererUnavailableError(`The WebGPU device cannot run the required pipelines: ${deviceLimitIssues.map((issue) => issue.message).join("; ")}`);
       }
       this.device = device;
+      this.setDiagnosticPhase("Preparing WebGPU presentation");
       this.message = "GPU device ready. Compiling specialized realtime and cinematic tracing pipelines; the first run can take a while.";
       this.capabilities = {
         ...this.capabilities,
@@ -21866,6 +22412,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.message = "GPU device ready. Presenting the renderer surface before shader compilation.";
       await this.presentInitializationSurface(device, context, generation);
       this.message = "GPU surface active. Compiling specialized realtime and cinematic tracing pipelines; the first run can take a while.";
+      this.setDiagnosticPhase("Compiling rendering pipelines");
       await this.createGpuResources(device, generation);
       this.assertInitializationCurrent(generation);
       this.message = "GPU pipelines ready. Preparing the initial scene.";
@@ -21875,6 +22422,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.assertInitializationCurrent(generation);
       this.synchronizeCanvas(true);
       this.state = "ready";
+      this.setDiagnosticPhase("Ready");
       this.message = "Renderer is ready. HDR radiance is accumulated internally and presented to the stage canvas.";
     }
     async configureCanvasOutput(device, context, preferredFormat, generation) {
@@ -21894,7 +22442,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         } catch (error) {
           configureError = error;
         }
-        const validationError = await device.popErrorScope();
+        const validationError = await this.waitForGpu(device.popErrorScope(), "Checking HDR canvas support");
         this.assertInitializationCurrent(generation);
         const configuration = typeof context.getConfiguration === "function" ? context.getConfiguration() : null;
         if (configureError === null && validationError === null && configuration?.format === "rgba16float" && configuration.toneMapping?.mode === "extended") {
@@ -21928,7 +22476,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       });
       pass.end();
       device.queue.submit([encoder.finish()]);
-      await device.queue.onSubmittedWorkDone();
+      await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Presenting initialization surface");
       this.assertInitializationCurrent(generation);
       const ownerWindow = this.ownerWindow;
       if (ownerWindow !== null && typeof ownerWindow.requestAnimationFrame === "function") {
@@ -21952,7 +22500,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.assertInitializationCurrent(generation);
       }
     }
-    async createGpuResources(device, generation) {
+    createSceneGpuResources(device) {
       this.uniformBuffer = device.createBuffer({
         label: "PrioSDK frame uniforms",
         size: GLOBAL_FLOATS * Float32Array.BYTES_PER_ELEMENT,
@@ -22002,54 +22550,46 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       });
       this.textureResources.initialize(device);
       this.cloudResources.initialize(device);
-      const rayTraceModule = device.createShaderModule({
-        label: "PrioSDK realtime ray tracer",
-        code: ADVANCED_RAY_TRACER_SHADER
-      });
-      const pathTraceModule = device.createShaderModule({
-        label: "PrioSDK cinematic path tracer",
-        code: ADVANCED_CINEMATIC_PATH_TRACER_SHADER
-      });
-      const animatedTriangleDeformationModule = device.createShaderModule({
-        label: "PrioSDK animated triangle deformation",
-        code: ANIMATED_TRIANGLE_DEFORMATION_SHADER
-      });
-      const presentationModule = device.createShaderModule({
-        label: "PrioSDK tone mapping presentation shader",
-        code: PRESENTATION_SHADER
-      });
+    }
+    async createGpuResources(device, generation) {
       const canvasFormat = this.canvasFormat;
       if (canvasFormat === null) {
         throw new RendererLifecycleError("Canvas format was not configured.");
       }
-      const validatedComputePipeline = async (module, shaderLabel, pipelineLabel) => {
-        await assertShaderCompiles3(module, shaderLabel);
-        this.assertInitializationCurrent(generation);
-        return device.createComputePipelineAsync({
+      const validatedComputePipeline = async (code, shaderLabel, pipelineLabel) => {
+        await this.beginCompilationStage(`Validating ${shaderLabel}`, generation);
+        const module = device.createShaderModule({ label: `PrioSDK ${shaderLabel}`, code });
+        await this.waitForGpu(assertShaderCompiles3(module, shaderLabel), `Validating ${shaderLabel}`);
+        await this.beginCompilationStage(`Compiling ${shaderLabel}`, generation);
+        const pipeline = await this.waitForGpu(device.createComputePipelineAsync({
           label: pipelineLabel,
           layout: "auto",
           compute: { module, entryPoint: "main" }
-        });
+        }), `Compiling ${shaderLabel}`);
+        this.assertInitializationCurrent(generation);
+        return pipeline;
       };
-      const rayTracePipelinePromise = validatedComputePipeline(
-        rayTraceModule,
+      const rayTracePipeline = await validatedComputePipeline(
+        ADVANCED_RAY_TRACER_SHADER,
         "realtime ray tracer",
         "PrioSDK realtime ray tracing pipeline"
       );
-      const pathTracePipelinePromise = validatedComputePipeline(
-        pathTraceModule,
+      const pathTracePipeline = await validatedComputePipeline(
+        ADVANCED_CINEMATIC_PATH_TRACER_SHADER,
         "cinematic path tracer",
         "PrioSDK cinematic path tracing pipeline"
       );
-      const animatedTriangleDeformationPipelinePromise = validatedComputePipeline(
-        animatedTriangleDeformationModule,
+      const animatedTriangleDeformationPipeline = await validatedComputePipeline(
+        ANIMATED_TRIANGLE_DEFORMATION_SHADER,
         "animated triangle deformation",
         "PrioSDK animated triangle deformation pipeline"
       );
-      const presentationPipelinePromise = (async () => {
-        await assertShaderCompiles3(presentationModule, "presentation shader");
-        this.assertInitializationCurrent(generation);
-        return device.createRenderPipelineAsync({
+      const presentationPipeline = await (async () => {
+        await this.beginCompilationStage("Validating presentation shader", generation);
+        const presentationModule = device.createShaderModule({ label: "PrioSDK tone mapping presentation shader", code: PRESENTATION_SHADER });
+        await this.waitForGpu(assertShaderCompiles3(presentationModule, "presentation shader"), "Validating presentation shader");
+        await this.beginCompilationStage("Compiling presentation pipeline", generation);
+        return this.waitForGpu(device.createRenderPipelineAsync({
           label: "PrioSDK presentation pipeline",
           layout: "auto",
           vertex: {
@@ -22062,44 +22602,38 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             targets: [{ format: canvasFormat }]
           },
           primitive: { topology: "triangle-list" }
-        });
+        }), "Compiling presentation pipeline");
       })();
-      const rasterPipelinePromise = RasterPipeline.create(device);
-      const framePipelinePromise = FramePipeline.create(device);
-      let rayTracePipeline;
-      let pathTracePipeline;
-      let animatedTriangleDeformationPipeline;
-      let presentationPipeline;
-      let rasterPipeline;
+      await this.beginCompilationStage("Compiling raster pipeline", generation);
+      const signal = this.compilationAbort?.signal;
+      const onProgress = (label) => {
+        this.assertInitializationCurrent(generation);
+        this.setDiagnosticPhase(label);
+      };
+      const rasterPipeline = await this.waitForGpu(
+        RasterPipeline.create(device, { onProgress, ...signal ? { signal } : {} }),
+        "Compiling raster pipeline",
+        (pipeline) => pipeline.destroy()
+      );
       let framePipeline;
       try {
-        [
-          rayTracePipeline,
-          pathTracePipeline,
-          animatedTriangleDeformationPipeline,
-          presentationPipeline,
-          rasterPipeline,
-          framePipeline
-        ] = await Promise.all([
-          rayTracePipelinePromise,
-          pathTracePipelinePromise,
-          animatedTriangleDeformationPipelinePromise,
-          presentationPipelinePromise,
-          rasterPipelinePromise,
-          framePipelinePromise
-        ]);
+        await this.beginCompilationStage("Compiling image processing pipelines", generation);
+        framePipeline = await this.waitForGpu(
+          FramePipeline.create(device, { onProgress, ...signal ? { signal } : {} }),
+          "Compiling image processing pipelines",
+          (pipeline) => pipeline.destroy()
+        );
         this.assertInitializationCurrent(generation);
       } catch (error) {
-        void framePipelinePromise.then(
-          (pipeline) => pipeline.destroy(),
-          () => {
-          }
-        );
+        rasterPipeline.destroy();
         throw error;
       }
       let animatedTriangleDeformationBindGroup;
       let rasterBindGroup;
       try {
+        await this.beginCompilationStage("Allocating scene GPU resources", generation);
+        this.createSceneGpuResources(device);
+        rasterPipeline.setShadowResolution(this.rasterShadowResolution);
         animatedTriangleDeformationBindGroup = device.createBindGroup({
           label: "PrioSDK animated triangle deformation resources",
           layout: animatedTriangleDeformationPipeline.getBindGroupLayout(0),
@@ -22122,6 +22656,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         });
       } catch (error) {
         framePipeline.destroy();
+        rasterPipeline.destroy();
         throw error;
       }
       this.computePipelines = {
@@ -22388,6 +22923,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.encodePresentation(encoder, postResult.presentationView);
       device.queue.submit([encoder.finish()]);
       this.lastFrameBackend = backend;
+      this.lastSubmittedFrameSceneRevision = this.uploadedSceneRevision;
       if (backend === "gpu-rasterization") this.rasterFrames += 1;
       if (postResult.learnedEnhancementDispatched) {
         this.learnedEnhancementDispatches += 1;
@@ -22420,10 +22956,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.renderProgressRequested = samples;
       this.renderProgressCompleted = 0;
       const isCurrent = () => this.device === device && generation === this.readyFrameGeneration && this.state === "ready" && !this.offlineRenderActive;
-      void device.queue.onSubmittedWorkDone().then(() => {
+      void this.waitForGpu(device.queue.onSubmittedWorkDone(), "Completing requested GPU frame").then(() => {
         if (!isCurrent()) return;
         this.renderProgressCompleted = samples;
         this.renderProgressState = "done";
+        this.setDiagnosticPhase("Done");
       }).catch((error) => {
         if (isCurrent()) this.handleRuntimeError(error);
       });
@@ -22502,11 +23039,29 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           }
         );
         const tiles = schedule.tiles;
+        let tilesPerFence = schedule.tilesPerFence;
+        let fenceStarted = diagnosticNow();
+        let lastPaint = fenceStarted;
+        let lastPreview = fenceStarted;
+        this.setDiagnosticPhase("Tracing cinematic sample tiles");
+        this.tileProgress = { completed: 0, total: tiles.length };
         for (let tileIndex = 0; tileIndex < tiles.length; tileIndex += 1) {
           const tile = tiles[tileIndex];
           assertOperationCurrent();
           this.writeTraceDispatchTile(device, tile);
           const encoder2 = device.createCommandEncoder({ label: "PrioSDK offline trace tile encoder" });
+          if (tileIndex === 0 && this.sampleCount === 0) {
+            const clear = encoder2.beginRenderPass({
+              label: "PrioSDK clear unfinished first-sample destination",
+              colorAttachments: [{
+                view: this.accumulationTextures[destinationTexture].createView(),
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                loadOp: "clear",
+                storeOp: "store"
+              }]
+            });
+            clear.end();
+          }
           if (deformationPending) {
             this.encodeAnimatedTriangleDeformation(
               encoder2,
@@ -22526,23 +23081,37 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           device.queue.submit([encoder2.finish()]);
           tilesSinceFence += 1;
           tilesSincePaint += 1;
-          if (tilesSinceFence >= schedule.tilesPerFence || tileIndex === tiles.length - 1) {
-            await device.queue.onSubmittedWorkDone();
+          if (tilesSinceFence >= tilesPerFence || tileIndex === tiles.length - 1) {
+            await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Completing cinematic trace tiles");
+            const fenceCompleted = diagnosticNow();
+            tilesPerFence = adjustOfflineFenceBatch(tilesPerFence, fenceCompleted - fenceStarted);
             tilesSinceFence = 0;
             assertOperationCurrent();
             if (this.device !== device || this.state !== "ready" && this.state !== "running") {
               throw new RendererLifecycleError(this.message);
             }
             if (this.sceneDirty || this.scenePreparation !== null) return;
+            this.tileProgress = { completed: tileIndex + 1, total: tiles.length };
             this.message = `Rendering exact cinematic sample tiles (${tileIndex + 1}/${tiles.length}) on WebGPU.`;
-            if (tilesSincePaint >= schedule.tilesPerPaint || tileIndex === tiles.length - 1) {
+            if (this.sampleCount === 0 && fenceCompleted - lastPreview >= 500 && tileIndex < tiles.length - 1) {
+              this.submitPartialOfflinePreview(device, destinationTexture);
+              await this.waitForGpu(device.queue.onSubmittedWorkDone(), "Presenting partial cinematic sample");
+              assertOperationCurrent();
+              this.partialPresentations += 1;
+              lastPreview = diagnosticNow();
+              this.message += " Showing unfinished first sample.";
+            }
+            if (shouldYieldOfflinePaint(lastPaint, diagnosticNow(), tilesSincePaint, schedule.tilesPerPaint) || tileIndex === tiles.length - 1) {
               tilesSincePaint = 0;
               await yieldToBrowserPaint(this.ownerWindow);
               assertOperationCurrent();
+              lastPaint = diagnosticNow();
             }
+            fenceStarted = diagnosticNow();
           }
         }
         assertOperationCurrent();
+        this.setDiagnosticPhase("Processing and presenting cinematic sample");
         this.writeTraceDispatchTile(device, { x: 0, y: 0, width: this.width, height: this.height });
         const encoder = device.createCommandEncoder({ label: "PrioSDK offline post-process encoder" });
         this.submitPostProcessedFrame(
@@ -22560,6 +23129,24 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     planOfflineTraceSchedule(width, height, workload) {
       return planOfflineTraceSchedule(width, height, workload);
+    }
+    submitPartialOfflinePreview(device, destination) {
+      const encoder = device.createCommandEncoder({ label: "PrioSDK partial first-sample preview" });
+      const view = this.framePipeline.encodePreview({
+        encoder,
+        hdrView: this.accumulationTextures[destination].createView(),
+        currentNormalDepthView: this.normalDepthViews[destination],
+        previousNormalDepthView: this.normalDepthViews[this.activeTexture],
+        albedoRoughnessView: this.albedoRoughnessTexture.createView(),
+        motionReactiveView: this.motionReactiveTexture.createView(),
+        settings: this.settings,
+        frameIndex: this.frameIndex,
+        accumulatedSamples: 0,
+        deltaSeconds: 0,
+        hdrOutputActive: this.capabilities.hdrCanvas && this.settings.hdrOutput !== "sdr"
+      });
+      this.encodePresentation(encoder, view);
+      device.queue.submit([encoder.finish()]);
     }
     writeTraceDispatchTile(device, tile) {
       const uniformBuffer = this.uniformBuffer;
@@ -22934,6 +23521,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         };
         this.state = "lost";
         this.message = `WebGPU device lost (${info.reason}): ${info.message || "No additional details."}`;
+        this.recordDiagnosticFailure(new Error(this.message));
+        this.message = this.diagnosticFailure?.message ?? this.message;
+        this.cancelGpuWaits(new RendererLifecycleError(this.message));
         this.releaseGpuResources(false);
       });
     }
@@ -22943,14 +23533,23 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       }
       this.cancelAnimationFrame();
       this.state = "error";
-      this.message = errorMessage3(error);
+      this.recordDiagnosticFailure(error);
+      this.message = this.diagnosticFailure?.message ?? errorMessage3(error);
+      this.cancelGpuWaits(new RendererLifecycleError(this.message));
     }
     releaseGpuResources(destroyDevice) {
+      this.compilationAbort?.abort();
+      this.compilationAbort = null;
+      this.cancelGpuWaits(new RendererLifecycleError(this.message));
+      this.uploadedSceneRevision = null;
+      this.uploadedSceneTriangles = 0;
+      this.lastSubmittedFrameSceneRevision = null;
       this.resetFrameRateMeasurement();
       this.destroyAccumulationTargets();
       this.textureResources.releaseDevice();
       this.cloudResources.releaseDevice();
       this.framePipeline?.destroy();
+      this.rasterPipeline?.destroy();
       this.uniformBuffer?.destroy();
       this.displayBuffer?.destroy();
       this.sphereBuffer?.destroy();
@@ -23069,12 +23668,15 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.sceneAnimatedShadowTriangleCount = packed.animatedShadowTriangleCount;
       this.sceneMaterialCount = packed.materialCount;
       this.sceneLightCount = packed.lightCount;
+      this.rasterPipeline?.updateScene(packed);
       writeArrayBuffer(device.queue, this.bvhBuffer, packed.bvhNodes);
       writeArrayBuffer(device.queue, this.animatedShadowBvhBuffer, packed.animatedShadowBvh);
       writeArrayBuffer(device.queue, this.triangleBuffer, packed.triangles);
       writeArrayBuffer(device.queue, this.materialBuffer, packed.materials);
       writeArrayBuffer(device.queue, this.lightBuffer, packed.lights);
       this.sceneDirty = false;
+      this.uploadedSceneRevision = this.sceneRevision;
+      this.uploadedSceneTriangles = packed.triangleCount;
     }
     beginRealtimeScenePreparation(startGeneration, listenersAlreadyRan) {
       void this.prepareSceneData(
@@ -23088,6 +23690,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           throw new RendererLifecycleError("The current scene could not be prepared for realtime rendering.");
         }
         this.message = this.activeRenderingMessage();
+        this.setDiagnosticPhase("Rendering realtime frames");
         this.skipBeforeTracedFrameListenersOnce = listenersAlreadyRan;
         this.renderFrame();
         if (this.state === "running" && !this.sceneDirty && this.scenePreparation === null) {
@@ -23153,9 +23756,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     async prepareSceneDataUntilCurrent(messagePrefix, canPublishStatus, assertOperationCurrent) {
       const generation = this.lifecycleGeneration;
+      const preparationGeneration = this.scenePreparationGeneration;
       const device = this.device;
       if (device === null) return;
       assertOperationCurrent();
+      this.setDiagnosticPhase(messagePrefix);
       while (this.sceneDirty && this.canUploadSceneData()) {
         assertOperationCurrent();
         const revision = this.sceneRevision;
@@ -23164,14 +23769,14 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         try {
           packed = await this.scene.buildPackedSceneAsync(async (progress) => {
             assertOperationCurrent();
-            this.assertScenePreparationCurrent(generation, device);
+            this.assertScenePreparationCurrent(generation, device, preparationGeneration);
             if (revision !== this.sceneRevision) throw new StaleScenePreparationError();
             if (canPublishStatus()) {
               this.message = scenePreparationMessage(messagePrefix, progress);
             }
             if (yieldForResponsiveness) await yieldToBrowser(this.ownerWindow);
             assertOperationCurrent();
-            this.assertScenePreparationCurrent(generation, device);
+            this.assertScenePreparationCurrent(generation, device, preparationGeneration);
             if (revision !== this.sceneRevision) throw new StaleScenePreparationError();
           });
         } catch (error) {
@@ -23179,7 +23784,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           throw error;
         }
         assertOperationCurrent();
-        this.assertScenePreparationCurrent(generation, device);
+        this.assertScenePreparationCurrent(generation, device, preparationGeneration);
         if (revision !== this.sceneRevision) {
           continue;
         }
@@ -23189,7 +23794,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           }
           await yieldToBrowser(this.ownerWindow);
           assertOperationCurrent();
-          this.assertScenePreparationCurrent(generation, device);
+          this.assertScenePreparationCurrent(generation, device, preparationGeneration);
           if (revision !== this.sceneRevision) continue;
         }
         this.uploadPackedScene(packed);
@@ -23202,7 +23807,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             }
             await yieldToBrowser(this.ownerWindow);
             assertOperationCurrent();
-            this.assertScenePreparationCurrent(generation, device);
+            this.assertScenePreparationCurrent(generation, device, preparationGeneration);
           }
         }
       }
@@ -23224,8 +23829,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         throw new RendererLifecycleError(this.message);
       }
     }
-    assertScenePreparationCurrent(generation, device) {
-      if (generation !== this.lifecycleGeneration || device !== this.device || !this.canUploadSceneData() || this.state === "destroyed" || this.state === "lost" || this.state === "error") {
+    assertScenePreparationCurrent(generation, device, preparationGeneration) {
+      if (generation !== this.lifecycleGeneration || preparationGeneration !== this.scenePreparationGeneration || device !== this.device || !this.canUploadSceneData() || this.state === "destroyed" || this.state === "lost" || this.state === "error") {
         if (this.state === "destroyed") {
           throw new RendererLifecycleError("Scene preparation was cancelled because the renderer was destroyed.");
         }
@@ -23285,7 +23890,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     assertInitializationCurrent(generation) {
       if (generation !== this.lifecycleGeneration || this.state === "destroyed" || this.state !== "initializing") {
-        throw new RendererLifecycleError("Renderer initialization was cancelled.");
+        throw new RendererLifecycleError(
+          generation === this.lifecycleGeneration && (this.state === "error" || this.state === "lost") ? this.diagnosticFailure?.message ?? this.message : "Renderer initialization was cancelled."
+        );
       }
     }
     ensureMutable() {
@@ -23375,8 +23982,14 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   }
   function fallbackAdapterStatus(adapter) {
     const adapterWithInfo = adapter;
-    const value = adapterWithInfo.info?.isFallbackAdapter;
+    const value = adapterWithInfo.info?.isFallbackAdapter ?? adapter.isFallbackAdapter;
     return typeof value === "boolean" ? value : null;
+  }
+  function diagnosticNow() {
+    return globalThis.performance?.now() ?? Date.now();
+  }
+  function diagnosticText(value, maximumLength) {
+    return value.replace(/\s+/g, " ").slice(0, maximumLength);
   }
   function collectLimits(limits) {
     return {
@@ -23643,8 +24256,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function cameraBasis(camera) {
     const forward = normalize2(subtract(camera.target, camera.position), [0, 0, -1]);
     const worldUp = Math.abs(forward[1]) > 0.999 ? [0, 0, 1] : [0, 1, 0];
-    const right = normalize2(cross2(forward, worldUp), [1, 0, 0]);
-    const up = normalize2(cross2(right, forward), [0, 1, 0]);
+    const right = normalize2(cross4(forward, worldUp), [1, 0, 0]);
+    const up = normalize2(cross4(right, forward), [0, 1, 0]);
     return { forward, right, up };
   }
   function cameraLensStatus(camera, fStop, mode) {
@@ -23672,17 +24285,17 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     return result;
   }
-  function normalize2(vector, fallback) {
-    const length = vectorLength(vector);
-    return length > 1e-6 ? [vector[0] / length, vector[1] / length, vector[2] / length] : fallback;
+  function normalize2(vector2, fallback) {
+    const length = vectorLength(vector2);
+    return length > 1e-6 ? [vector2[0] / length, vector2[1] / length, vector2[2] / length] : fallback;
   }
-  function vectorLength(vector) {
-    return Math.hypot(vector[0], vector[1], vector[2]);
+  function vectorLength(vector2) {
+    return Math.hypot(vector2[0], vector2[1], vector2[2]);
   }
   function subtract(left, right) {
     return [left[0] - right[0], left[1] - right[1], left[2] - right[2]];
   }
-  function cross2(left, right) {
+  function cross4(left, right) {
     return [
       left[1] * right[2] - left[2] * right[1],
       left[2] * right[0] - left[0] * right[2],
@@ -23692,11 +24305,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function sameVector(left, right) {
     return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
   }
-  function sanitizeVector(vector, minimum, maximum, fallback) {
+  function sanitizeVector(vector2, minimum, maximum, fallback) {
     return [
-      boundedNumber(vector[0], minimum, maximum, fallback[0]),
-      boundedNumber(vector[1], minimum, maximum, fallback[1]),
-      boundedNumber(vector[2], minimum, maximum, fallback[2])
+      boundedNumber(vector2[0], minimum, maximum, fallback[0]),
+      boundedNumber(vector2[1], minimum, maximum, fallback[1]),
+      boundedNumber(vector2[2], minimum, maximum, fallback[2])
     ];
   }
   function positiveDimension(...candidates) {
@@ -23758,7 +24371,12 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     return (value % 360 + 360) % 360;
   }
   function errorMessage3(error) {
-    return error instanceof Error && error.message.length > 0 ? error.message : "An unknown renderer error occurred.";
+    if (typeof error === "string" && error.length > 0) return error;
+    if (typeof error === "object" && error !== null && "message" in error) {
+      const message = error.message;
+      if (typeof message === "string" && message.length > 0) return message;
+    }
+    return "An unknown renderer error occurred.";
   }
 
   // src/renderer/model/types.ts
@@ -25554,18 +26172,18 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       return this.#destroyed ? 0 : Math.min(1, this.#accumulator / this.#preset.fixedStep);
     }
     get status() {
-      const entries = this.#registry.entries();
+      const entries2 = this.#registry.entries();
       let dynamicBodyCount = 0;
       let fixedBodyCount = 0;
       let kinematicBodyCount = 0;
       let activeBodyCount = 0;
       let sleepingBodyCount = 0;
-      for (const { value: record } of entries) {
-        if (record.type === "dynamic") dynamicBodyCount += 1;
-        else if (record.type === "fixed") fixedBodyCount += 1;
+      for (const { value: record2 } of entries2) {
+        if (record2.type === "dynamic") dynamicBodyCount += 1;
+        else if (record2.type === "fixed") fixedBodyCount += 1;
         else kinematicBodyCount += 1;
-        if (record.type === "dynamic" && record.body.isSleeping()) sleepingBodyCount += 1;
-        if (record.type !== "fixed" && record.body.isEnabled() && !record.body.isSleeping()) activeBodyCount += 1;
+        if (record2.type === "dynamic" && record2.body.isSleeping()) sleepingBodyCount += 1;
+        if (record2.type !== "fixed" && record2.body.isEnabled() && !record2.body.isSleeping()) activeBodyCount += 1;
       }
       const preset = this.#preset;
       const gravity = this.#destroyed ? [0, 0, 0] : vectorToTuple(this.#world.gravity);
@@ -25586,7 +26204,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         solverIterations: preset.solverIterations,
         internalPgsIterations: preset.internalPgsIterations,
         ccdSubsteps: preset.ccdSubsteps,
-        bodyCount: entries.length,
+        bodyCount: entries2.length,
         dynamicBodyCount,
         fixedBodyCount,
         kinematicBodyCount,
@@ -25667,7 +26285,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       try {
         const collider = this.#world.createCollider(colliderDesc, body);
         const initial = readTransform(body);
-        const record = {
+        const record2 = {
           body,
           collider,
           type,
@@ -25677,7 +26295,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
           current: initial,
           pendingKinematic: void 0
         };
-        const handle = this.#registry.create(record);
+        const handle = this.#registry.create(record2);
         body.userData = { physicsBodyHandle: handle };
         return handle;
       } catch (error) {
@@ -25708,55 +26326,55 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.#assertAlive();
       assertFinite(alpha, "alpha");
       if (alpha < 0 || alpha > 1) throw new RangeError("alpha must be between zero and one");
-      const record = this.#registry.get(handle);
-      return publicTransform(interpolateTransform(record.previous, record.current, alpha));
+      const record2 = this.#registry.get(handle);
+      return publicTransform(interpolateTransform(record2.previous, record2.current, alpha));
     }
     getBodyState(handle) {
       this.#assertAlive();
-      const record = this.#registry.get(handle);
+      const record2 = this.#registry.get(handle);
       return {
         handle,
-        type: record.type,
-        shape: record.shape,
-        transform: publicTransform(record.current),
-        linearVelocity: vectorToTuple(record.body.linvel()),
-        angularVelocity: vectorToTuple(record.body.angvel()),
-        mass: record.body.mass(),
-        density: record.collider.density(),
-        friction: record.collider.friction(),
-        restitution: record.collider.restitution(),
-        linearDamping: record.body.linearDamping(),
-        angularDamping: record.body.angularDamping(),
-        gravityScale: record.body.gravityScale(),
-        sleeping: record.body.isSleeping(),
-        enabled: record.body.isEnabled(),
-        ccd: record.body.isCcdEnabled(),
-        binding: record.binding
+        type: record2.type,
+        shape: record2.shape,
+        transform: publicTransform(record2.current),
+        linearVelocity: vectorToTuple(record2.body.linvel()),
+        angularVelocity: vectorToTuple(record2.body.angvel()),
+        mass: record2.body.mass(),
+        density: record2.collider.density(),
+        friction: record2.collider.friction(),
+        restitution: record2.collider.restitution(),
+        linearDamping: record2.body.linearDamping(),
+        angularDamping: record2.body.angularDamping(),
+        gravityScale: record2.body.gravityScale(),
+        sleeping: record2.body.isSleeping(),
+        enabled: record2.body.isEnabled(),
+        ccd: record2.body.isCcdEnabled(),
+        binding: record2.binding
       };
     }
     setTransform(handle, update, wakeUp = true) {
       this.#assertAlive();
-      const record = this.#registry.get(handle);
+      const record2 = this.#registry.get(handle);
       const next = {
-        position: update.position ? copyVec3(update.position, "position") : [...record.current.position],
-        rotation: update.rotation ? normalizeQuaternion(update.rotation, "rotation") : [...record.current.rotation]
+        position: update.position ? copyVec3(update.position, "position") : [...record2.current.position],
+        rotation: update.rotation ? normalizeQuaternion(update.rotation, "rotation") : [...record2.current.rotation]
       };
-      record.body.setTranslation({ x: next.position[0], y: next.position[1], z: next.position[2] }, wakeUp);
-      record.body.setRotation({ x: next.rotation[0], y: next.rotation[1], z: next.rotation[2], w: next.rotation[3] }, wakeUp);
+      record2.body.setTranslation({ x: next.position[0], y: next.position[1], z: next.position[2] }, wakeUp);
+      record2.body.setRotation({ x: next.rotation[0], y: next.rotation[1], z: next.rotation[2], w: next.rotation[3] }, wakeUp);
       this.#world.propagateModifiedBodyPositionsToColliders();
-      record.previous = cloneTransform2(next);
-      record.current = next;
-      record.pendingKinematic = void 0;
+      record2.previous = cloneTransform2(next);
+      record2.current = next;
+      record2.pendingKinematic = void 0;
     }
     /** Schedules a pose reached over the next wrapper step by a position-based kinematic body. */
     setNextKinematicTransform(handle, update) {
       this.#assertAlive();
-      const record = this.#registry.get(handle);
-      if (record.type !== "kinematic-position") {
+      const record2 = this.#registry.get(handle);
+      if (record2.type !== "kinematic-position") {
         throw new TypeError("setNextKinematicTransform requires a position-based kinematic body");
       }
-      const base = record.pendingKinematic ?? record.current;
-      record.pendingKinematic = {
+      const base = record2.pendingKinematic ?? record2.current;
+      record2.pendingKinematic = {
         position: update.position ? copyVec3(update.position, "position") : [...base.position],
         rotation: update.rotation ? normalizeQuaternion(update.rotation, "rotation") : [...base.rotation]
       };
@@ -25824,18 +26442,18 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       if (update.mass !== void 0 && update.density !== void 0) {
         throw new RangeError("mass and density are mutually exclusive");
       }
-      const record = this.#registry.get(handle);
-      if (update.friction !== void 0) record.collider.setFriction(assertNonNegative(update.friction, "friction"));
+      const record2 = this.#registry.get(handle);
+      if (update.friction !== void 0) record2.collider.setFriction(assertNonNegative(update.friction, "friction"));
       if (update.restitution !== void 0) {
         const restitution = assertNonNegative(update.restitution, "restitution");
         if (restitution > 1) throw new RangeError("restitution must be between zero and one");
-        record.collider.setRestitution(restitution);
+        record2.collider.setRestitution(restitution);
       }
-      if (update.density !== void 0) record.collider.setDensity(assertNonNegative(update.density, "density"));
-      if (update.mass !== void 0) record.collider.setMass(assertNonNegative(update.mass, "mass"));
+      if (update.density !== void 0) record2.collider.setDensity(assertNonNegative(update.density, "density"));
+      if (update.mass !== void 0) record2.collider.setMass(assertNonNegative(update.mass, "mass"));
       if (update.density !== void 0 || update.mass !== void 0) {
-        record.body.recomputeMassPropertiesFromColliders();
-        if (wakeUp) record.body.wakeUp();
+        record2.body.recomputeMassPropertiesFromColliders();
+        if (wakeUp) record2.body.wakeUp();
       }
     }
     setEnabled(handle, enabled) {
@@ -25907,8 +26525,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     removeBody(handle) {
       this.#assertAlive();
-      const record = this.#registry.get(handle);
-      this.#world.removeRigidBody(record.body);
+      const record2 = this.#registry.get(handle);
+      this.#world.removeRigidBody(record2.body);
       this.#registry.remove(handle);
     }
     clear() {
@@ -25955,21 +26573,21 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     #runFrame(durationSeconds) {
       const startedAt = monotonicNow2();
-      const entries = this.#registry.entries();
-      for (const { value: record } of entries) record.previous = cloneTransform2(record.current);
+      const entries2 = this.#registry.entries();
+      for (const { value: record2 } of entries2) record2.previous = cloneTransform2(record2.current);
       const substeps = this.#preset.substeps;
       this.#world.timestep = durationSeconds / substeps;
       for (let substep = 0; substep < substeps; substep += 1) {
         const progress = (substep + 1) / substeps;
-        for (const { value: record } of entries) {
-          if (!record.pendingKinematic) continue;
-          const pose = interpolateTransform(record.previous, record.pendingKinematic, progress);
-          record.body.setNextKinematicTranslation({
+        for (const { value: record2 } of entries2) {
+          if (!record2.pendingKinematic) continue;
+          const pose = interpolateTransform(record2.previous, record2.pendingKinematic, progress);
+          record2.body.setNextKinematicTranslation({
             x: pose.position[0],
             y: pose.position[1],
             z: pose.position[2]
           });
-          record.body.setNextKinematicRotation({
+          record2.body.setNextKinematicRotation({
             x: pose.rotation[0],
             y: pose.rotation[1],
             z: pose.rotation[2],
@@ -25978,9 +26596,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         }
         this.#world.step();
       }
-      for (const { value: record } of entries) {
-        record.current = readTransform(record.body);
-        record.pendingKinematic = void 0;
+      for (const { value: record2 } of entries2) {
+        record2.current = readTransform(record2.body);
+        record2.pendingKinematic = void 0;
       }
       this.#simulationTime += durationSeconds;
       this.#totalSimulationSteps += 1;
@@ -26360,9 +26978,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   // src/video/timing.ts
   var MICROSECONDS_PER_SECOND = 1e6;
   var DEFAULT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
-  function positiveFinite(name, value) {
+  function positiveFinite(name2, value) {
     if (!Number.isFinite(value) || value <= 0) {
-      throw new RangeError(`${name} must be a positive finite number`);
+      throw new RangeError(`${name2} must be a positive finite number`);
     }
     return value;
   }
@@ -26438,9 +27056,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     vp9: "vp09.00.10.08",
     vp8: "vp8"
   };
-  function validateDimension(name, value) {
+  function validateDimension(name2, value) {
     if (!Number.isSafeInteger(value) || value <= 0 || value > 65535) {
-      throw new RangeError(`${name} must be an integer from 1 through 65535`);
+      throw new RangeError(`${name2} must be an integer from 1 through 65535`);
     }
     return value;
   }
@@ -26721,15 +27339,15 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function floatElement(id, value) {
     return element(id, float64Bytes(value));
   }
-  function finitePositive2(name, value) {
+  function finitePositive2(name2, value) {
     if (!Number.isFinite(value) || value <= 0) {
-      throw new RangeError(`${name} must be a positive finite number`);
+      throw new RangeError(`${name2} must be a positive finite number`);
     }
     return value;
   }
-  function integerDimension(name, value) {
+  function integerDimension(name2, value) {
     if (!Number.isSafeInteger(value) || value <= 0 || value > 65535) {
-      throw new RangeError(`${name} must be an integer from 1 through 65535`);
+      throw new RangeError(`${name2} must be an integer from 1 through 65535`);
     }
     return value;
   }
@@ -26825,9 +27443,9 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       const cuePoints = [];
       for (let index = 0; index < clusters.length; index += 1) {
         const cluster = clusters[index];
-        const description = clusterDescriptions[index];
-        if (!cluster || !description) continue;
-        cuePoints.push(this.createCuePoint(description.timestampMs, clusterPosition));
+        const description2 = clusterDescriptions[index];
+        if (!cluster || !description2) continue;
+        cuePoints.push(this.createCuePoint(description2.timestampMs, clusterPosition));
         clusterPosition += cluster.byteLength;
       }
       const cues = element(IDS.cues, sequence(...cuePoints));
@@ -28720,11 +29338,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       verticalFovDegrees: camera.verticalFovDegrees
     };
   }
-  function finiteVec34(vector, name) {
-    if (vector.length !== 3 || !vector.every(Number.isFinite)) {
-      throw new TypeError(`${name} must contain three finite numbers.`);
+  function finiteVec34(vector2, name2) {
+    if (vector2.length !== 3 || !vector2.every(Number.isFinite)) {
+      throw new TypeError(`${name2} must contain three finite numbers.`);
     }
-    return [vector[0], vector[1], vector[2]];
+    return [vector2[0], vector2[1], vector2[2]];
   }
   function eventTargetsEditableControl(event) {
     const path = typeof event.composedPath === "function" ? event.composedPath() : [];
@@ -28741,22 +29359,22 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     if (contentEditable === "" || contentEditable === "true") return true;
     return element2.getAttribute?.("role") === "textbox";
   }
-  function positiveFinite2(value, name) {
-    if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${name} must be greater than zero.`);
+  function positiveFinite2(value, name2) {
+    if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${name2} must be greater than zero.`);
     return value;
   }
-  function nonNegativeFinite(value, name) {
+  function nonNegativeFinite(value, name2) {
     if (!Number.isFinite(value) || value < 0) {
-      throw new RangeError(`${name} must be greater than or equal to zero.`);
+      throw new RangeError(`${name2} must be greater than or equal to zero.`);
     }
     return value;
   }
-  function finiteValue(value, name) {
-    if (!Number.isFinite(value)) throw new TypeError(`${name} must be finite.`);
+  function finiteValue(value, name2) {
+    if (!Number.isFinite(value)) throw new TypeError(`${name2} must be finite.`);
     return value;
   }
-  function nonNegativeInteger(value, name) {
-    if (!Number.isInteger(value) || value < 0) throw new RangeError(`${name} must be a non-negative integer.`);
+  function nonNegativeInteger(value, name2) {
+    if (!Number.isInteger(value) || value < 0) throw new RangeError(`${name2} must be a non-negative integer.`);
     return value;
   }
   function finiteNumber5(value, fallback) {
@@ -28774,8 +29392,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function subtract2(a, b) {
     return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
   }
-  function scale2(vector, scalar) {
-    return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar];
+  function scale2(vector2, scalar) {
+    return [vector2[0] * scalar, vector2[1] * scalar, vector2[2] * scalar];
   }
   function sameVec3(left, right) {
     return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
@@ -28788,6 +29406,831 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       if (maximumDifference !== 0) return maximumDifference;
     }
     return 0;
+  }
+
+  // src/runtime-version.ts
+  var __PRIOSDK_BUILD_ID__ = "ae31f244a24149758b8e";
+  var PRIOSDK_RUNTIME_VERSION = "0.10.0";
+  var PRIOSDK_RUNTIME_BUILD = typeof __PRIOSDK_BUILD_ID__ === "string" ? `${PRIOSDK_RUNTIME_VERSION}+${__PRIOSDK_BUILD_ID__}` : `${PRIOSDK_RUNTIME_VERSION}+development`;
+
+  // src/renderer/model/gltf.ts
+  var MAX_ENTRIES = 16384;
+  var SUPPORTED_EXTENSIONS = /* @__PURE__ */ new Set(["KHR_materials_unlit", "KHR_materials_ior", "KHR_materials_transmission"]);
+  var IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  function record(value, label) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
+    return value;
+  }
+  function entries(value, label) {
+    if (value === void 0) return [];
+    if (!Array.isArray(value) || value.length > MAX_ENTRIES) throw new RangeError(`${label} must be an array with at most ${MAX_ENTRIES} entries`);
+    return value;
+  }
+  function integer3(value, label, maximum = Number.MAX_SAFE_INTEGER) {
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > maximum) {
+      throw new RangeError(`${label} must be an integer from 0 through ${maximum}`);
+    }
+    return value;
+  }
+  function finite2(value, label, minimum = -Infinity, maximum = Infinity) {
+    if (typeof value !== "number" || !Number.isFinite(value) || !Number.isFinite(Math.fround(value)) || value < minimum || value > maximum) {
+      throw new RangeError(`${label} must be a finite number in [${minimum}, ${maximum}]`);
+    }
+    return value;
+  }
+  function vector(value, defaults, label) {
+    if (value === void 0) return [...defaults];
+    if (!Array.isArray(value) || value.length !== defaults.length) throw new RangeError(`${label} must contain ${defaults.length} components`);
+    return value.map((component) => finite2(component, label));
+  }
+  function ref(array, index, label) {
+    return record(array[integer3(index, label, array.length - 1)], label);
+  }
+  function name(value, fallback) {
+    return typeof value === "string" ? value.slice(0, 256) : fallback;
+  }
+  function aborted(signal) {
+    if (signal?.aborted) throw new DOMException("Model import cancelled", "AbortError");
+  }
+  function parseContainer(source, maxBytes) {
+    if (typeof source === "string" && source.length > maxBytes) throw new RangeError("glTF source exceeds the byte budget");
+    const bytes = typeof source === "string" ? new TextEncoder().encode(source) : source instanceof Uint8Array ? source : new Uint8Array(source);
+    if (bytes.byteLength > maxBytes) throw new RangeError("glTF source exceeds the byte budget");
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes.byteLength >= 4 && view.getUint32(0, true) === 1179937895) {
+      if (bytes.byteLength < 20 || view.getUint32(4, true) !== 2 || view.getUint32(8, true) !== bytes.byteLength) {
+        throw new RangeError("GLB header is truncated or its version/declared length is invalid");
+      }
+      let offset = 12;
+      let json;
+      let binary;
+      while (offset < bytes.byteLength) {
+        if (offset + 8 > bytes.byteLength) throw new RangeError("GLB chunk header is truncated");
+        const length = view.getUint32(offset, true);
+        const type = view.getUint32(offset + 4, true);
+        offset += 8;
+        if (length % 4 !== 0 || offset + length > bytes.byteLength) throw new RangeError("GLB chunk length is invalid or truncated");
+        const chunk = bytes.subarray(offset, offset + length);
+        if (type === 1313821514) {
+          if (json || offset !== 20) throw new SyntaxError("GLB requires exactly one JSON chunk, placed first");
+          json = record(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(chunk)), "glTF");
+        } else if (type === 5130562) {
+          if (!json || binary) throw new SyntaxError("GLB requires JSON before its single binary chunk");
+          binary = chunk;
+        } else if (!json) throw new SyntaxError("GLB JSON chunk must be first");
+        offset += length;
+      }
+      if (!json) throw new SyntaxError("GLB is missing its JSON chunk");
+      return { json, ...binary ? { binary } : {}, byteLength: bytes.byteLength };
+    }
+    return { json: record(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)), "glTF"), byteLength: bytes.byteLength };
+  }
+  function safeRelativeUri(uri) {
+    let decoded;
+    try {
+      decoded = decodeURIComponent(uri);
+    } catch {
+      throw new SyntaxError("glTF resource URI contains invalid escaping");
+    }
+    if (!decoded || decoded.length > 2048 || /[\u0000-\u001f\u007f\\:#?%]/.test(decoded) || decoded.startsWith("/") || decoded.split("/").some((segment) => segment === "..")) {
+      throw new RangeError("glTF resource URI must be a safe relative path without traversal, schemes, queries, or fragments");
+    }
+    return decoded;
+  }
+  function decodeDataUri(uri, kind, maxBytes) {
+    const comma = uri.indexOf(",");
+    const header = uri.slice(0, comma);
+    const allowed = kind === "image" ? /^data:image\/(png|jpeg);base64$/ : /^data:application\/(octet-stream|gltf-buffer);base64$/;
+    if (comma < 0 || !allowed.test(header)) throw new SyntaxError(`Unsupported ${kind} data URI; use base64 ${kind === "image" ? "PNG/JPEG" : "application/octet-stream"}`);
+    const data = uri.slice(comma + 1);
+    if (data.length > Math.ceil(maxBytes / 3) * 4 || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new RangeError("glTF data URI is invalid or exceeds the byte budget");
+    const decoded = atob(data);
+    if (decoded.length > maxBytes) throw new RangeError("glTF data URI exceeds the byte budget");
+    return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  }
+  function multiply(a, b) {
+    const result = new Float32Array(16);
+    for (let column = 0; column < 4; column += 1) {
+      for (let row = 0; row < 4; row += 1) {
+        let value = 0;
+        for (let k = 0; k < 4; k += 1) value += a[k * 4 + row] * b[column * 4 + k];
+        result[column * 4 + row] = finite2(value, "glTF world transform");
+      }
+    }
+    return result;
+  }
+  function localMatrix(node) {
+    if (node.matrix !== void 0) {
+      if (node.translation !== void 0 || node.rotation !== void 0 || node.scale !== void 0) throw new SyntaxError("glTF node cannot combine matrix and TRS");
+      const matrix = vector(node.matrix, IDENTITY, "node.matrix");
+      if (matrix[3] !== 0 || matrix[7] !== 0 || matrix[11] !== 0 || matrix[15] !== 1) throw new RangeError("glTF node matrix must be affine");
+      return new Float32Array(matrix);
+    }
+    const t = vector(node.translation, [0, 0, 0], "node.translation");
+    const s = vector(node.scale, [1, 1, 1], "node.scale");
+    const q = vector(node.rotation, [0, 0, 0, 1], "node.rotation");
+    const length = Math.hypot(...q);
+    if (Math.abs(length - 1) > 1e-3) throw new RangeError("glTF node quaternion must have unit length");
+    const [x, y, z, w] = q.map((component) => component / length);
+    return new Float32Array([
+      (1 - 2 * (y * y + z * z)) * s[0],
+      2 * (x * y + z * w) * s[0],
+      2 * (x * z - y * w) * s[0],
+      0,
+      2 * (x * y - z * w) * s[1],
+      (1 - 2 * (x * x + z * z)) * s[1],
+      2 * (y * z + x * w) * s[1],
+      0,
+      2 * (x * z + y * w) * s[2],
+      2 * (y * z - x * w) * s[2],
+      (1 - 2 * (x * x + y * y)) * s[2],
+      0,
+      t[0],
+      t[1],
+      t[2],
+      1
+    ]);
+  }
+  async function parseGltf(source, options = {}) {
+    aborted(options.signal);
+    const budget = resolveModelBudget(options.budget);
+    const container = parseContainer(source, budget.maxSourceBytes);
+    const document2 = container.json;
+    const asset = record(document2.asset, "glTF.asset");
+    if (asset.version !== "2.0" || asset.minVersion !== void 0 && asset.minVersion !== "2.0") throw new RangeError("Only glTF 2.0 is supported; export a GLB from Blender instead of a .blend file");
+    const warnings = [];
+    for (const extension of entries(document2.extensionsRequired, "extensionsRequired")) {
+      if (typeof extension !== "string" || !SUPPORTED_EXTENSIONS.has(extension)) throw new RangeError(`Unsupported required glTF extension: ${String(extension)}. Export without compression or bake the unsupported feature.`);
+    }
+    for (const extension of entries(document2.extensionsUsed, "extensionsUsed")) {
+      if (typeof extension !== "string") throw new TypeError("glTF extension names must be strings");
+      if (!SUPPORTED_EXTENSIONS.has(extension)) warnings.push(`Optional extension ${extension} is not applied; core glTF fallback data is used where available.`);
+    }
+    if (entries(document2.animations, "animations").length) warnings.push("Animation clips are not played; nodes use their authored static transforms.");
+    if (entries(document2.skins, "skins").length) throw new RangeError("Skinned glTF models are not supported; export an applied static mesh.");
+    const bufferSources = entries(document2.buffers, "buffers");
+    const views = entries(document2.bufferViews, "bufferViews");
+    const accessors = entries(document2.accessors, "accessors");
+    const images = entries(document2.images, "images");
+    const textureSources = entries(document2.textures, "textures");
+    const samplers = entries(document2.samplers, "samplers");
+    const materialSources = entries(document2.materials, "materials");
+    const meshSources = entries(document2.meshes, "meshes");
+    const nodes = entries(document2.nodes, "nodes");
+    const scenes = entries(document2.scenes, "scenes");
+    let sourceBytes = container.byteLength;
+    const resources = /* @__PURE__ */ new Map();
+    async function resource(uri, kind) {
+      if (typeof uri !== "string") throw new TypeError(`glTF ${kind} URI must be a string`);
+      aborted(options.signal);
+      const key = `${kind}:${uri}`;
+      const cached = resources.get(key);
+      if (cached) return cached;
+      let bytes;
+      if (uri.startsWith("data:")) bytes = decodeDataUri(uri, kind, budget.maxSourceBytes - sourceBytes);
+      else {
+        const relative = safeRelativeUri(uri);
+        if (!options.resolveResource) throw new RangeError(`External glTF resource "${relative}" requires an explicit resource resolver; use self-contained GLB for portable projects.`);
+        bytes = await options.resolveResource(relative, kind);
+      }
+      aborted(options.signal);
+      if (!(bytes instanceof Uint8Array)) throw new TypeError("glTF resource resolver must return Uint8Array bytes");
+      sourceBytes += bytes.byteLength;
+      if (sourceBytes > budget.maxSourceBytes) throw new RangeError("glTF resources exceed the aggregate source-byte budget");
+      resources.set(key, bytes);
+      return bytes;
+    }
+    const buffers = [];
+    for (let index = 0; index < bufferSources.length; index += 1) {
+      const buffer = ref(bufferSources, index, `buffer ${index}`);
+      const length = integer3(buffer.byteLength, "buffer.byteLength", budget.maxSourceBytes);
+      if (length === 0) throw new RangeError("glTF buffers must not be empty");
+      let bytes;
+      if (buffer.uri !== void 0) bytes = await resource(buffer.uri, "buffer");
+      else {
+        if (index !== 0 || !container.binary) throw new RangeError("Only GLB buffer 0 may omit its URI");
+        bytes = container.binary;
+        if (bytes.byteLength > length + 3) throw new RangeError("GLB binary chunk exceeds buffer length plus permitted padding");
+      }
+      if (bytes.byteLength < length) throw new RangeError(`glTF buffer ${index} is truncated`);
+      buffers.push(bytes.subarray(0, length));
+    }
+    function bufferView(index) {
+      const source2 = ref(views, index, "bufferView");
+      const extensions = source2.extensions === void 0 ? {} : record(source2.extensions, "bufferView.extensions");
+      if (extensions.EXT_meshopt_compression) throw new RangeError("Meshopt-compressed glTF buffers are unsupported; export uncompressed GLB.");
+      const buffer = buffers[integer3(source2.buffer, "bufferView.buffer", buffers.length - 1)];
+      const offset = integer3(source2.byteOffset ?? 0, "bufferView.byteOffset", buffer.byteLength);
+      const length = integer3(source2.byteLength, "bufferView.byteLength", buffer.byteLength);
+      if (length === 0 || offset + length > buffer.byteLength) throw new RangeError("glTF bufferView is empty or exceeds its buffer");
+      const stride = source2.byteStride === void 0 ? void 0 : integer3(source2.byteStride, "bufferView.byteStride", 252);
+      if (stride !== void 0 && (stride < 4 || stride % 4 !== 0)) throw new RangeError("glTF byteStride must be a multiple of 4 in [4, 252]");
+      return { bytes: buffer.subarray(offset, offset + length), offset, ...stride !== void 0 ? { stride } : {} };
+    }
+    function accessor(index, semantic) {
+      const source2 = ref(accessors, index, `accessor ${semantic}`);
+      if (source2.sparse !== void 0) throw new RangeError("Sparse glTF accessors are unsupported; export a dense static mesh.");
+      const components = semantic === "indices" ? 1 : semantic === "TEXCOORD_0" ? 2 : 3;
+      if (source2.type !== (components === 1 ? "SCALAR" : `VEC${components}`)) throw new RangeError(`glTF ${semantic} accessor has the wrong type`);
+      const count = integer3(source2.count, `accessor ${semantic}.count`, semantic === "indices" ? budget.maxTriangles * 3 : budget.maxVertices);
+      if (count === 0) throw new RangeError("glTF accessor must not be empty");
+      const componentType = integer3(source2.componentType, "accessor.componentType");
+      const normalized2 = source2.normalized ?? false;
+      if (typeof normalized2 !== "boolean") throw new TypeError("glTF accessor.normalized must be boolean");
+      const isUnsigned = componentType === 5121 || componentType === 5123 || componentType === 5125;
+      if (semantic === "indices" ? !isUnsigned || normalized2 : semantic === "TEXCOORD_0" ? !(componentType === 5126 || (componentType === 5121 || componentType === 5123) && normalized2) : componentType !== 5126) {
+        throw new RangeError(`Unsupported glTF ${semantic} component format; export standard float attributes and unsigned indices.`);
+      }
+      if (componentType === 5126 && normalized2) throw new RangeError("glTF floating-point accessors cannot be normalized");
+      const size = componentType === 5121 ? 1 : componentType === 5123 ? 2 : 4;
+      const view = bufferView(source2.bufferView);
+      const offset = integer3(source2.byteOffset ?? 0, "accessor.byteOffset", view.bytes.byteLength);
+      const stride = view.stride ?? components * size;
+      if (semantic === "indices" && view.stride !== void 0) throw new RangeError("glTF index bufferViews cannot have byteStride");
+      if (stride < components * size || stride % size !== 0 || offset % size !== 0 || (view.offset + offset) % size !== 0) throw new RangeError("glTF accessor alignment or byteStride is invalid");
+      if (offset + (count - 1) * stride + components * size > view.bytes.byteLength) throw new RangeError(`glTF ${semantic} accessor exceeds its bufferView`);
+      const result = semantic === "indices" ? new Uint32Array(count) : new Float32Array(count * components);
+      const data = new DataView(view.bytes.buffer, view.bytes.byteOffset, view.bytes.byteLength);
+      for (let element2 = 0; element2 < count; element2 += 1) {
+        for (let component = 0; component < components; component += 1) {
+          const at = offset + element2 * stride + component * size;
+          let value = componentType === 5126 ? data.getFloat32(at, true) : componentType === 5125 ? data.getUint32(at, true) : componentType === 5123 ? data.getUint16(at, true) : data.getUint8(at);
+          if (normalized2) value /= componentType === 5121 ? 255 : 65535;
+          result[element2 * components + component] = finite2(value, `glTF ${semantic} value`);
+        }
+      }
+      return result;
+    }
+    const imageCache = /* @__PURE__ */ new Map();
+    const textures = [];
+    for (let index = 0; index < textureSources.length; index += 1) {
+      let choice2 = function(value, fallback, values, label) {
+        const selected = integer3(value ?? fallback, label);
+        if (!values.includes(selected)) throw new RangeError(`Unsupported glTF ${label}`);
+        return selected;
+      };
+      var choice = choice2;
+      const texture = ref(textureSources, index, "texture");
+      const imageIndex = integer3(texture.source, "texture.source", images.length - 1);
+      let image = imageCache.get(imageIndex);
+      const source2 = ref(images, imageIndex, "image");
+      if (!image) {
+        if (source2.uri === void 0 === (source2.bufferView === void 0)) throw new RangeError("glTF image requires exactly one URI or bufferView");
+        const bytes = source2.uri !== void 0 ? await resource(source2.uri, "image") : bufferView(source2.bufferView).bytes;
+        const png = bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((value, at) => bytes[at] === value);
+        const jpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+        if (!png && !jpeg) throw new RangeError("glTF image must contain PNG or JPEG bytes");
+        const mimeType = png ? "image/png" : "image/jpeg";
+        if (source2.mimeType !== void 0 && source2.mimeType !== mimeType) throw new RangeError("glTF image MIME type does not match its bytes");
+        image = { bytes, mimeType };
+        imageCache.set(imageIndex, image);
+      }
+      const sampler = texture.sampler === void 0 ? {} : ref(samplers, texture.sampler, "texture.sampler");
+      textures.push({ name: name(texture.name ?? source2.name, `texture ${index}`), ...image, sampler: {
+        wrapS: choice2(sampler.wrapS, 10497, [33071, 33648, 10497], "wrapS"),
+        wrapT: choice2(sampler.wrapT, 10497, [33071, 33648, 10497], "wrapT"),
+        magFilter: choice2(sampler.magFilter, 9729, [9728, 9729], "magFilter"),
+        minFilter: choice2(sampler.minFilter, 9987, [9728, 9729, 9984, 9985, 9986, 9987], "minFilter")
+      } });
+    }
+    function textureReference(value) {
+      if (value === void 0) return void 0;
+      const info = record(value, "textureInfo");
+      if ((info.texCoord ?? 0) !== 0) throw new RangeError("This importer supports only TEXCOORD_0; bake other UV channels before exporting.");
+      const extensions = info.extensions === void 0 ? {} : record(info.extensions, "textureInfo.extensions");
+      if (extensions.KHR_texture_transform) throw new RangeError("KHR_texture_transform is unsupported; apply texture transforms to UVs before exporting.");
+      return { index: integer3(info.index, "textureInfo.index", textures.length - 1), texCoord: 0, scale: finite2(info.scale ?? 1, "normal texture scale", 0, 4) };
+    }
+    const materials2 = materialSources.map((value, index) => {
+      const material = record(value, "material");
+      const pbr = material.pbrMetallicRoughness === void 0 ? {} : record(material.pbrMetallicRoughness, "pbrMetallicRoughness");
+      const color2 = vector(pbr.baseColorFactor, [1, 1, 1, 1], "baseColorFactor");
+      color2.forEach((component) => finite2(component, "baseColorFactor", 0, 1));
+      const emission = vector(material.emissiveFactor, [0, 0, 0], "emissiveFactor");
+      emission.forEach((component) => finite2(component, "emissiveFactor", 0, 1));
+      const alphaMode = material.alphaMode ?? "OPAQUE";
+      if (alphaMode !== "OPAQUE" && alphaMode !== "MASK" && alphaMode !== "BLEND") throw new RangeError("Unsupported glTF alphaMode");
+      if (material.doubleSided !== void 0 && typeof material.doubleSided !== "boolean") throw new TypeError("glTF doubleSided must be boolean");
+      const extensions = material.extensions === void 0 ? {} : record(material.extensions, "material.extensions");
+      const transmission = extensions.KHR_materials_transmission === void 0 ? {} : record(extensions.KHR_materials_transmission, "KHR_materials_transmission");
+      if (transmission.transmissionTexture !== void 0) throw new RangeError("glTF transmission textures are unsupported; use a scalar transmission factor.");
+      const ior = extensions.KHR_materials_ior === void 0 ? {} : record(extensions.KHR_materials_ior, "KHR_materials_ior");
+      const baseColorTexture = textureReference(pbr.baseColorTexture);
+      const normalTexture = textureReference(material.normalTexture);
+      const metallicRoughnessTexture = textureReference(pbr.metallicRoughnessTexture);
+      const emissiveTexture = textureReference(material.emissiveTexture);
+      if (material.occlusionTexture !== void 0) warnings.push(`Material ${name(material.name, String(index))}: baked occlusion texture is not applied; geometric lighting remains active.`);
+      return {
+        name: name(material.name, `material ${index}`),
+        definition: {
+          baseColor: color2.slice(0, 3),
+          roughness: finite2(pbr.roughnessFactor ?? 1, "roughnessFactor", 0, 1),
+          metallic: finite2(pbr.metallicFactor ?? 1, "metallicFactor", 0, 1),
+          emissionColor: extensions.KHR_materials_unlit !== void 0 ? [1, 1, 1] : emission,
+          emissionStrength: 1,
+          alpha: alphaMode === "OPAQUE" ? 1 : color2[3],
+          doubleSided: material.doubleSided === true,
+          transmission: finite2(transmission.transmissionFactor ?? 0, "transmissionFactor", 0, 1),
+          ior: finite2(ior.ior ?? 1.5, "ior", 1, 3),
+          ...extensions.KHR_materials_unlit !== void 0 ? { surfaceDetail: "unlit" } : {}
+        },
+        alphaMode,
+        alphaCutoff: finite2(material.alphaCutoff ?? 0.5, "alphaCutoff", 0, 1),
+        ...baseColorTexture ? { baseColorTexture } : {},
+        ...normalTexture ? { normalTexture } : {},
+        ...metallicRoughnessTexture ? { metallicRoughnessTexture } : {},
+        ...emissiveTexture ? { emissiveTexture } : {}
+      };
+    });
+    const defaultMaterial = materials2.length;
+    materials2.push({ name: "glTF default", definition: { baseColor: [1, 1, 1], roughness: 1, metallic: 1, doubleSided: false }, alphaMode: "OPAQUE", alphaCutoff: 0.5 });
+    const meshes = [];
+    const primitiveMap = [];
+    let vertices = 0;
+    let triangles = 0;
+    for (let meshIndex = 0; meshIndex < meshSources.length; meshIndex += 1) {
+      aborted(options.signal);
+      const source2 = ref(meshSources, meshIndex, "mesh");
+      if (source2.weights !== void 0) throw new RangeError("Morph-weighted glTF meshes are unsupported; export an applied static mesh.");
+      const primitives = entries(source2.primitives, "mesh.primitives");
+      if (primitives.length === 0) throw new RangeError("glTF mesh must contain at least one primitive");
+      const output = [];
+      for (const primitiveValue of primitives) {
+        if (meshes.length >= MAX_ENTRIES) throw new RangeError("glTF has too many mesh primitives");
+        const primitive = record(primitiveValue, "primitive");
+        if ((primitive.mode ?? 4) !== 4) throw new RangeError("Only glTF TRIANGLES primitives are supported; triangulate before exporting.");
+        if (entries(primitive.targets, "primitive.targets").length) throw new RangeError("Morph targets are unsupported; export an applied static mesh.");
+        const extensions = primitive.extensions === void 0 ? {} : record(primitive.extensions, "primitive.extensions");
+        if (extensions.KHR_draco_mesh_compression) throw new RangeError("Draco-compressed glTF meshes are unsupported; disable Draco when exporting GLB.");
+        const attributes = record(primitive.attributes, "primitive.attributes");
+        if (attributes.JOINTS_0 !== void 0 || attributes.WEIGHTS_0 !== void 0) throw new RangeError("Skinning attributes are unsupported; export an applied static mesh.");
+        const positions = accessor(attributes.POSITION, "POSITION");
+        const indices = primitive.indices === void 0 ? Uint32Array.from({ length: positions.length / 3 }, (_, index) => index) : accessor(primitive.indices, "indices");
+        vertices += positions.length / 3;
+        triangles += indices.length / 3;
+        if (vertices > budget.maxVertices || triangles > budget.maxTriangles) throw new RangeError("glTF meshes exceed the aggregate vertex/triangle budget");
+        const normals = attributes.NORMAL === void 0 ? void 0 : accessor(attributes.NORMAL, "NORMAL");
+        const uvs = attributes.TEXCOORD_0 === void 0 ? void 0 : accessor(attributes.TEXCOORD_0, "TEXCOORD_0");
+        const mesh = { positions, indices, ...normals ? { normals } : {}, ...uvs ? { uvs } : {} };
+        validateMesh(mesh);
+        const material = primitive.material === void 0 ? defaultMaterial : integer3(primitive.material, "primitive.material", materialSources.length - 1);
+        const maps = materials2[material];
+        if (!uvs && (maps.baseColorTexture || maps.normalTexture || maps.metallicRoughnessTexture || maps.emissiveTexture)) throw new RangeError("Textured glTF primitive is missing TEXCOORD_0");
+        for (const attribute of Object.keys(attributes)) {
+          if (attribute !== "POSITION" && attribute !== "NORMAL" && attribute !== "TEXCOORD_0") warnings.push(`Mesh ${meshIndex}: attribute ${attribute} is not consumed; normal-map tangents are derived from UVs.`);
+        }
+        output.push(meshes.length);
+        meshes.push({ name: `${name(source2.name, `mesh ${meshIndex}`)} / ${output.length - 1}`, mesh, material });
+      }
+      primitiveMap.push(output);
+    }
+    const instances = [];
+    let instancedVertices = 0;
+    let instancedTriangles = 0;
+    const childNodes = /* @__PURE__ */ new Set();
+    for (const value of nodes) {
+      const node = record(value, "node");
+      for (const child of entries(node.children, "node.children")) {
+        const index = integer3(child, "child node", nodes.length - 1);
+        if (childNodes.has(index)) throw new RangeError("glTF node has multiple parents");
+        childNodes.add(index);
+      }
+    }
+    const roots = scenes.length ? entries(ref(scenes, document2.scene ?? 0, "scene").nodes, "scene.nodes") : nodes.map((_, index) => index).filter((index) => !childNodes.has(index));
+    const visited = /* @__PURE__ */ new Set();
+    const active = /* @__PURE__ */ new Set();
+    function visit(indexValue, parent, depth) {
+      aborted(options.signal);
+      const index = integer3(indexValue, "node", nodes.length - 1);
+      if (active.has(index)) throw new RangeError("glTF node hierarchy contains a cycle");
+      if (visited.has(index)) throw new RangeError("glTF scene references the same node more than once");
+      if (depth > 256) throw new RangeError("glTF node hierarchy is too deep");
+      visited.add(index);
+      active.add(index);
+      const node = ref(nodes, index, "node");
+      if (node.skin !== void 0 || node.weights !== void 0) throw new RangeError("Skinned or morph-weighted nodes are unsupported; export an applied static mesh.");
+      const worldMatrix = multiply(parent, localMatrix(node));
+      if (node.camera !== void 0 || node.extensions !== void 0) warnings.push(`Node ${name(node.name, String(index))}: cameras and node extensions are not imported.`);
+      if (node.mesh !== void 0) {
+        for (const mesh of primitiveMap[integer3(node.mesh, "node.mesh", primitiveMap.length - 1)]) {
+          const definition = meshes[mesh].mesh;
+          instancedVertices += definition.positions.length / 3;
+          instancedTriangles += definition.indices.length / 3;
+          if (instances.length >= MAX_ENTRIES || instancedVertices > budget.maxVertices || instancedTriangles > budget.maxTriangles) throw new RangeError("glTF instances exceed the aggregate vertex/triangle budget");
+          instances.push({ name: name(node.name, `node ${index}`), mesh, worldMatrix });
+        }
+      }
+      for (const child of entries(node.children, "node.children")) visit(child, worldMatrix, depth + 1);
+      active.delete(index);
+    }
+    for (const root of roots) visit(root, new Float32Array(IDENTITY), 0);
+    if (!instances.length) throw new RangeError("glTF selected scene contains no renderable triangle instances");
+    return { meshes, materials: materials2, textures, instances, warnings: [...new Set(warnings)], stats: { sourceBytes, vertices, triangles, instancedVertices, instancedTriangles } };
+  }
+  function bakeGltfInstance(mesh, worldMatrix) {
+    const validated = validateMesh(mesh);
+    if (worldMatrix.length !== 16) throw new RangeError("glTF world matrix must contain 16 components");
+    const m = Array.from(worldMatrix, (value) => finite2(value, "glTF world matrix"));
+    if (m[3] !== 0 || m[7] !== 0 || m[11] !== 0 || m[15] !== 1) throw new RangeError("glTF world matrix must be affine");
+    const a = m[0], b = m[4], c = m[8], d = m[1], e = m[5], f = m[9], g = m[2], h = m[6], i = m[10];
+    const determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-20) throw new RangeError("glTF world transform is singular; apply a non-zero scale before exporting");
+    const normalMatrix = [e * i - f * h, f * g - d * i, d * h - e * g, c * h - b * i, a * i - c * g, b * g - a * h, b * f - c * e, c * d - a * f, a * e - b * d].map((value) => value / determinant);
+    const positions = new Float32Array(validated.positions.length);
+    const normals = validated.normals ? new Float32Array(validated.normals.length) : void 0;
+    for (let offset = 0; offset < positions.length; offset += 3) {
+      const x = validated.positions[offset], y = validated.positions[offset + 1], z = validated.positions[offset + 2];
+      positions[offset] = finite2(a * x + b * y + c * z + m[12], "transformed position");
+      positions[offset + 1] = finite2(d * x + e * y + f * z + m[13], "transformed position");
+      positions[offset + 2] = finite2(g * x + h * y + i * z + m[14], "transformed position");
+      if (normals && validated.normals) {
+        const nx = validated.normals[offset], ny = validated.normals[offset + 1], nz = validated.normals[offset + 2];
+        const tx = normalMatrix[0] * nx + normalMatrix[1] * ny + normalMatrix[2] * nz;
+        const ty = normalMatrix[3] * nx + normalMatrix[4] * ny + normalMatrix[5] * nz;
+        const tz = normalMatrix[6] * nx + normalMatrix[7] * ny + normalMatrix[8] * nz;
+        const length = Math.hypot(tx, ty, tz);
+        normals[offset] = finite2(tx / length, "transformed normal");
+        normals[offset + 1] = finite2(ty / length, "transformed normal");
+        normals[offset + 2] = finite2(tz / length, "transformed normal");
+      }
+    }
+    const indices = validated.indices.slice();
+    if (determinant < 0) {
+      for (let offset = 0; offset < indices.length; offset += 3) [indices[offset + 1], indices[offset + 2]] = [indices[offset + 2], indices[offset + 1]];
+    }
+    const result = { positions, indices, ...normals ? { normals } : {}, ...validated.uvs ? { uvs: validated.uvs.slice() } : {} };
+    validateMesh(result);
+    return result;
+  }
+
+  // src/renderer/model/import-controller.ts
+  var MAX_IMAGE_PIXELS = 67108864;
+  var MAX_IMAGE_DIMENSION = 16384;
+  function bounded(value, fallback, maximum, label) {
+    const number = value ?? fallback;
+    if (!Number.isSafeInteger(number) || number < 1 || number > maximum) throw new RangeError(`${label} must be an integer from 1 through ${maximum}`);
+    return number;
+  }
+  function abortError3() {
+    return new DOMException("Model import cancelled", "AbortError");
+  }
+  function checkAbort(signal) {
+    if (signal.aborted) throw abortError3();
+  }
+  function description(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  function inspectModelTextureDimensions(texture) {
+    const bytes = texture.bytes;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (texture.mimeType === "image/png") {
+      if (bytes.length < 33 || ![137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value) || view.getUint32(8) !== 13 || view.getUint32(12) !== 1229472850) {
+        throw new RangeError("Model PNG is missing a valid IHDR header");
+      }
+      return { width: view.getUint32(16), height: view.getUint32(20) };
+    }
+    if (bytes.length < 4 || bytes[0] !== 255 || bytes[1] !== 216) throw new RangeError("Model JPEG is missing its start marker");
+    let offset = 2;
+    while (offset < bytes.length) {
+      if (bytes[offset++] !== 255) throw new RangeError("Model JPEG marker stream is invalid");
+      while (offset < bytes.length && bytes[offset] === 255) offset += 1;
+      const marker = bytes[offset++];
+      if (marker === void 0 || marker === 0 || marker === 218 || marker === 217) break;
+      if (marker === 1 || marker >= 208 && marker <= 215) continue;
+      if (offset + 2 > bytes.length) throw new RangeError("Model JPEG segment header is truncated");
+      const length = view.getUint16(offset);
+      if (length < 2 || offset + length > bytes.length) throw new RangeError("Model JPEG segment is truncated");
+      if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204) {
+        if (length < 8) throw new RangeError("Model JPEG frame header is truncated");
+        return { height: view.getUint16(offset + 3), width: view.getUint16(offset + 5) };
+      }
+      offset += length;
+    }
+    throw new RangeError("Model JPEG does not contain a supported frame header");
+  }
+  function waitFor(operation, signal, timeoutMilliseconds, onLate) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", cancelled);
+      };
+      const cancelled = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(abortError3());
+      };
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(`Model resource did not finish within ${timeoutMilliseconds} ms; check its resolver or image decoder.`));
+      }, timeoutMilliseconds);
+      signal.addEventListener("abort", cancelled, { once: true });
+      if (signal.aborted) cancelled();
+      operation.then((value) => {
+        if (settled) {
+          onLate?.(value);
+          return;
+        }
+        settled = true;
+        cleanup();
+        resolve(value);
+      }, (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      });
+    });
+  }
+  function usedMaterialIndices(scene) {
+    return [...new Set(scene.instances.map((instance) => scene.meshes[instance.mesh].material))];
+  }
+  function usedTextureIndices(materials2) {
+    return [...new Set(materials2.flatMap((material) => [material.baseColorTexture, material.normalTexture, material.metallicRoughnessTexture].flatMap((reference) => reference ? [reference.index] : [])))];
+  }
+  function featureWarnings(material) {
+    const warnings = [];
+    if (material.emissiveTexture) warnings.push(`Material ${material.name}: emissive texture is not supported by the current material layout; its scalar emission is retained.`);
+    if (material.alphaMode === "MASK") warnings.push(`Material ${material.name}: alpha-cutoff texture coverage is not supported; alpha is treated as scalar transparency.`);
+    if (material.alphaMode === "BLEND" && material.baseColorTexture) warnings.push(`Material ${material.name}: textured alpha differs between raster and trace transport; trace uses scalar opacity.`);
+    return warnings;
+  }
+  var ModelImportController = class {
+    constructor(adapter) {
+      this.adapter = adapter;
+    }
+    adapter;
+    controller = null;
+    activeResources = null;
+    earlyRollbackErrors = [];
+    state = { phase: "idle", message: "No model imported", loadedTextures: 0, totalTextures: 0, loadedObjects: 0, totalObjects: 0, triangles: 0, warnings: [], error: null };
+    unresolved = { objects: [], meshes: [], materials: [], textures: [] };
+    getStatus() {
+      return { ...this.state, warnings: [...this.state.warnings] };
+    }
+    cancel() {
+      this.controller?.abort();
+      if (this.activeResources) this.earlyRollbackErrors.push(...this.rollback(this.activeResources));
+    }
+    async importGltf(source, options = {}) {
+      if (this.controller) throw new Error("A model import is already running; wait for it or cancel it before starting another.");
+      if (Object.values(this.unresolved).some((handles) => handles.length)) throw new Error("A previous model rollback could not release its resources; recover the renderer before importing another model.");
+      const maxPixels = bounded(options.maxTexturePixels, 16777216, MAX_IMAGE_PIXELS, "maxTexturePixels");
+      const maxTotalPixels = bounded(options.maxTotalTexturePixels, MAX_IMAGE_PIXELS, MAX_IMAGE_PIXELS * 4, "maxTotalTexturePixels");
+      const timeout = bounded(options.resourceTimeoutMilliseconds, 6e4, 3e5, "resourceTimeoutMilliseconds");
+      const policy = options.materialPolicy ?? "warn";
+      if (policy !== "warn" && policy !== "strict") throw new RangeError("materialPolicy must be warn or strict");
+      const controller = new AbortController();
+      this.controller = controller;
+      const signal = controller.signal;
+      const relay = () => controller.abort();
+      options.signal?.addEventListener("abort", relay, { once: true });
+      if (options.signal?.aborted) controller.abort();
+      const owned = { objects: [], meshes: [], materials: [], textures: [] };
+      this.activeResources = owned;
+      this.earlyRollbackErrors = [];
+      const warnings = [];
+      const update = (patch) => {
+        this.state = { ...this.state, ...patch, warnings: [...new Set(warnings)] };
+        try {
+          options.onProgress?.(this.getStatus());
+        } catch {
+        }
+      };
+      const checkpoint = async () => {
+        checkAbort(signal);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        checkAbort(signal);
+      };
+      this.state = { phase: "parsing", message: "Reading glTF resources", loadedTextures: 0, totalTextures: 0, loadedObjects: 0, totalObjects: 0, triangles: 0, warnings: [], error: null };
+      try {
+        update({});
+        const scene = await parseGltf(source, {
+          ...options.budget !== void 0 ? { budget: options.budget } : {},
+          signal,
+          ...options.resolveResource ? { resolveResource: (uri, kind) => waitFor(options.resolveResource(uri, kind), signal, timeout) } : {}
+        });
+        checkAbort(signal);
+        warnings.push(...scene.warnings);
+        const materialIndices = usedMaterialIndices(scene);
+        const sourceMaterials = materialIndices.map((index) => scene.materials[index]);
+        for (const material of sourceMaterials) warnings.push(...featureWarnings(material));
+        const textureIndices = usedTextureIndices(sourceMaterials);
+        const imageRecords = /* @__PURE__ */ new Map();
+        for (const index of textureIndices) {
+          const texture = scene.textures[index];
+          let image = imageRecords.get(texture.bytes);
+          if (!image) {
+            image = { texture, indices: [] };
+            imageRecords.set(texture.bytes, image);
+          }
+          image.indices.push(index);
+          if (texture.sampler.wrapS !== 10497 || texture.sampler.wrapT !== 10497) warnings.push(`Texture ${texture.name}: this renderer uses repeat wrapping; the imported clamp/mirror sampler cannot be reproduced.`);
+          if (texture.sampler.magFilter !== 9729 || texture.sampler.minFilter !== 9987) warnings.push(`Texture ${texture.name}: this renderer uses its global anisotropic/trilinear filter rather than the imported sampler filter.`);
+        }
+        update({ phase: "preflight", message: "Checking model geometry and texture limits", totalTextures: imageRecords.size, totalObjects: scene.instances.length, triangles: scene.stats.instancedTriangles });
+        const registry = this.adapter.getTextureStatus();
+        if (registry.free < imageRecords.size) throw new RangeError(`Model needs ${imageRecords.size} texture layers, but only ${registry.free} are available; existing textures were not replaced.`);
+        let totalPixels = 0;
+        for (const { texture } of imageRecords.values()) {
+          const dimensions = inspectModelTextureDimensions(texture);
+          const pixels = dimensions.width * dimensions.height;
+          if (dimensions.width < 1 || dimensions.height < 1 || dimensions.width > MAX_IMAGE_DIMENSION || dimensions.height > MAX_IMAGE_DIMENSION || pixels > maxPixels) throw new RangeError(`Texture ${texture.name} exceeds the ${maxPixels}-pixel / ${MAX_IMAGE_DIMENSION}-dimension model decoding budget.`);
+          totalPixels += pixels;
+          if (totalPixels > maxTotalPixels) throw new RangeError(`Model textures exceed the aggregate ${maxTotalPixels}-pixel decoding budget.`);
+          if (dimensions.width !== registry.width || dimensions.height !== registry.height) warnings.push(`Texture ${texture.name}: ${dimensions.width}x${dimensions.height} is resampled to the current ${registry.width}x${registry.height} GPU material layer.`);
+        }
+        if (scene.stats.instancedTriangles + this.adapter.getRenderDiagnostics().scene.triangles > this.adapter.getTriangleBudget()) throw new RangeError("Model would exceed the remaining scene triangle budget; no existing geometry was removed.");
+        if (policy === "strict" && warnings.length) throw new RangeError(`Strict model import rejected unsupported or resampled content: ${warnings[0]}`);
+        const baked = /* @__PURE__ */ new Map();
+        const instanceKeys = [];
+        for (const instance of scene.instances) {
+          const key = `${instance.mesh}:${Array.from(instance.worldMatrix).join(",")}`;
+          if (!baked.has(key)) baked.set(key, bakeGltfInstance(scene.meshes[instance.mesh].mesh, instance.worldMatrix));
+          instanceKeys.push(key);
+          await checkpoint();
+        }
+        update({ phase: "textures", message: "Loading embedded model textures" });
+        const textureHandles = /* @__PURE__ */ new Map();
+        for (const { texture, indices } of imageRecords.values()) {
+          checkAbort(signal);
+          const blob = new Blob([texture.bytes.slice().buffer], { type: texture.mimeType });
+          const handle = await waitFor(this.adapter.loadTexture(blob, { label: texture.name, flipY: false, signal, maxSourceBytes: texture.bytes.byteLength }), signal, timeout, (late) => {
+            try {
+              this.adapter.removeTexture(late);
+            } catch (error) {
+              this.unresolved.textures.push(late);
+              this.state = { ...this.state, phase: "error", error: `Cancelled model texture could not be released: ${description(error)}` };
+            }
+          });
+          owned.textures.push(handle);
+          checkAbort(signal);
+          for (const index of indices) textureHandles.set(index, handle);
+          update({ loadedTextures: owned.textures.length, message: `Loaded model texture ${owned.textures.length}/${imageRecords.size}` });
+        }
+        update({ phase: "materials", message: "Preparing model materials" });
+        const materialHandles = /* @__PURE__ */ new Map();
+        this.adapter.batchSceneUpdates(() => {
+          for (const index of materialIndices) {
+            checkAbort(signal);
+            const material = scene.materials[index];
+            const definition = { ...material.definition };
+            let textureFlags = 0;
+            if (material.baseColorTexture) {
+              definition.baseColorTextureLayer = this.adapter.resolveTextureLayer(textureHandles.get(material.baseColorTexture.index));
+              definition.textureStrength = 1;
+              textureFlags |= MATERIAL_TEXTURE_FLAG_BASE_COLOR;
+            }
+            if (material.normalTexture) {
+              definition.normalTextureLayer = this.adapter.resolveTextureLayer(textureHandles.get(material.normalTexture.index));
+              definition.textureNormalStrength = material.normalTexture.scale;
+              textureFlags |= MATERIAL_TEXTURE_FLAG_INDEPENDENT_NORMAL;
+            }
+            if (material.metallicRoughnessTexture) {
+              definition.roughnessTextureLayer = this.adapter.resolveTextureLayer(textureHandles.get(material.metallicRoughnessTexture.index));
+              definition.textureRoughnessStrength = 1;
+              textureFlags |= MATERIAL_TEXTURE_FLAG_PACKED_METALLIC_ROUGHNESS;
+            }
+            definition.textureFlags = textureFlags;
+            const handle = this.adapter.createMaterial(definition);
+            owned.materials.push(handle);
+            materialHandles.set(index, handle);
+          }
+        });
+        update({ phase: "geometry", message: "Staging model geometry" });
+        const meshHandles = /* @__PURE__ */ new Map();
+        for (let index = 0; index < scene.instances.length; index += 1) {
+          checkAbort(signal);
+          const instance = scene.instances[index];
+          const key = instanceKeys[index];
+          this.adapter.batchSceneUpdates(() => {
+            let mesh = meshHandles.get(key);
+            if (!mesh) {
+              mesh = this.adapter.createMesh(baked.get(key));
+              owned.meshes.push(mesh);
+              meshHandles.set(key, mesh);
+            }
+            const material = materialHandles.get(scene.meshes[instance.mesh].material);
+            owned.objects.push(this.adapter.createObject({ mesh, material, visible: false }));
+          });
+          update({ loadedObjects: owned.objects.length, message: `Staged model object ${owned.objects.length}/${scene.instances.length}` });
+          await checkpoint();
+        }
+        update({ phase: "committing", message: "Making the complete model visible" });
+        checkAbort(signal);
+        this.adapter.batchSceneUpdates(() => {
+          for (const object of owned.objects) this.adapter.updateObject(object, { visible: true });
+        });
+        this.activeResources = null;
+        update({ phase: "done", message: `Done \u2014 imported ${owned.objects.length} objects / ${scene.stats.instancedTriangles} triangles`, error: null });
+        return { objects: [...owned.objects], meshes: [...owned.meshes], materials: [...owned.materials], textures: [...owned.textures], warnings: [...new Set(warnings)], stats: scene.stats };
+      } catch (error) {
+        controller.abort();
+        const rollbackErrors = [...this.earlyRollbackErrors, ...this.rollback(owned)];
+        if (rollbackErrors.length) {
+          const combined = new AggregateError([error, ...rollbackErrors], `${description(error)} Rollback could not release ${rollbackErrors.length} resources; recover the renderer before retrying.`);
+          update({ phase: "error", error: combined.message, message: combined.message });
+          throw combined;
+        }
+        update({ phase: error instanceof DOMException && error.name === "AbortError" ? "cancelled" : "error", error: description(error), message: description(error) });
+        throw error;
+      } finally {
+        options.signal?.removeEventListener("abort", relay);
+        if (this.controller === controller) this.controller = null;
+        this.activeResources = null;
+        this.earlyRollbackErrors = [];
+      }
+    }
+    rollback(owned) {
+      const errors = [];
+      const release = (handles, remove, unresolved) => {
+        for (const handle of handles.splice(0).reverse()) {
+          try {
+            remove(handle);
+          } catch (error) {
+            errors.push(error);
+            unresolved.push(handle);
+          }
+        }
+      };
+      release(owned.objects, (handle) => this.adapter.removeObject(handle), this.unresolved.objects);
+      release(owned.meshes, (handle) => this.adapter.removeMesh(handle), this.unresolved.meshes);
+      release(owned.materials, (handle) => this.adapter.removeMaterial(handle), this.unresolved.materials);
+      release(owned.textures, (handle) => this.adapter.removeTexture(handle), this.unresolved.textures);
+      return errors;
+    }
+  };
+
+  // src/extension/model-source.ts
+  async function resolveModelSource(value, maximumBytes, signal, fetcher = globalThis.fetch) {
+    const text = value.trim();
+    if (!text) throw new TypeError("Model source is empty. Use glTF JSON or a GLB/glTF URL; export .blend files as GLB first.");
+    if (text.startsWith("{")) {
+      if (new TextEncoder().encode(text).byteLength > maximumBytes) throw new RangeError("Model JSON exceeds the source budget.");
+      return { source: text };
+    }
+    const url = new URL(text);
+    if (!["https:", "http:", "data:", "blob:"].includes(url.protocol)) throw new TypeError("Model URL must use https, http, data, or blob. Local filesystem paths are not browser URLs.");
+    if (/\.blend$/i.test(url.pathname)) throw new TypeError("Export the Blender file as glTF 2.0 Binary (.glb), with textures embedded, before importing.");
+    let remaining = maximumBytes;
+    let sourceUrl = url;
+    const read = async (resource, primary = false) => {
+      signal.throwIfAborted();
+      const response = await fetcher(resource.href, { signal, credentials: "omit" });
+      if (!response.ok) throw new Error(`Model request failed (HTTP ${response.status}); check the URL and cross-origin access.`);
+      if (primary && response.url) sourceUrl = new URL(response.url);
+      const declared = Number(response.headers.get("content-length") ?? 0);
+      if (declared > remaining) {
+        await response.body?.cancel();
+        throw new RangeError("Model resources exceed the source-byte budget.");
+      }
+      if (!response.body) {
+        const bytes2 = new Uint8Array(await response.arrayBuffer());
+        if (bytes2.length > remaining) throw new RangeError("Model resources exceed the source-byte budget.");
+        remaining -= bytes2.length;
+        signal.throwIfAborted();
+        return bytes2;
+      }
+      const reader = response.body.getReader();
+      const chunks = [];
+      let length = 0;
+      try {
+        while (true) {
+          signal.throwIfAborted();
+          const next = await reader.read();
+          if (next.done) break;
+          length += next.value.length;
+          if (next.value.length > remaining) throw new RangeError("Model resources exceed the source-byte budget.");
+          remaining -= next.value.length;
+          chunks.push(next.value);
+        }
+      } catch (error) {
+        await reader.cancel().catch(() => void 0);
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return bytes;
+    };
+    const source = await read(url, true);
+    return {
+      source,
+      resolveResource: async (relative) => {
+        if (!["https:", "http:"].includes(sourceUrl.protocol)) throw new Error("This embedded model refers to external files. Export a self-contained GLB with embedded textures and buffers.");
+        const resource = new URL(relative, sourceUrl);
+        if (!["https:", "http:"].includes(resource.protocol)) throw new TypeError("External model resources must use HTTP or HTTPS.");
+        return read(resource);
+      }
+    };
   }
 
   // src/extension/prio-sdk-extension.ts
@@ -29027,10 +30470,14 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     physics;
     video;
     freeCamera;
+    modelImporter;
+    modelImportAbort = null;
+    modelSourceLoading = false;
     scratch;
     stopAll = () => {
       if (!this.backendAvailable || this.terminallyDisposed) return;
       this.video.cancel();
+      this.cancelModelImport();
       this.physics.stop();
       this.freeCamera.disable();
       this.renderer.stop();
@@ -29049,6 +30496,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     };
     lastBlockError = "";
     blockErrorRevision = 0;
+    errorEpoch = 0;
+    exampleSetup = null;
     offlineCaptureInProgress = false;
     backendAvailable = false;
     backendGeneration = 0;
@@ -29084,6 +30533,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         runtime: this.scratch.vm.runtime
       });
       this.physics = new PhysicsController(this.renderer);
+      this.modelImporter = new ModelImportController(this.renderer);
       this.physics.setExternallyDriven(true);
       this.video = new VideoController(this.renderer);
       this.freeCamera = new FreeCameraController(this.renderer, {
@@ -29180,6 +30630,23 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             blockType: reporter,
             text: "render progress"
           },
+          {
+            opcode: "beginExampleSetup",
+            blockType: command,
+            text: "begin scene setup expecting textures [TEXTURES] materials [MATERIALS] triangles [TRIANGLES] environment [ENVIRONMENT] background [BACKPLATE]",
+            arguments: {
+              TEXTURES: { type: number, defaultValue: 0 },
+              MATERIALS: { type: number, defaultValue: 0 },
+              TRIANGLES: { type: number, defaultValue: 0 },
+              ENVIRONMENT: { ...booleanChoice, defaultValue: "false" },
+              BACKPLATE: { ...booleanChoice, defaultValue: "false" }
+            }
+          },
+          { opcode: "assertExampleReady", blockType: command, text: "validate scene setup" },
+          { opcode: "exampleReady", blockType: booleanBlock, text: "scene setup ready?" },
+          { opcode: "exampleSetupFailed", blockType: booleanBlock, text: "scene setup failed?" },
+          { opcode: "clearRendererError", blockType: command, text: "clear recorded renderer error" },
+          { opcode: "rendererDiagnosticReport", blockType: reporter, text: "renderer diagnostic report", disableMonitor: true },
           {
             opcode: "outputSize",
             blockType: reporter,
@@ -29690,6 +31157,18 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             }
           },
           {
+            opcode: "importGltfModel",
+            blockType: reporter,
+            text: "import GLB / glTF [SOURCE] budget [DETAIL] material handling [POLICY]",
+            arguments: {
+              SOURCE: { type: string, defaultValue: "" },
+              DETAIL: { type: string, menu: "modelDetail", defaultValue: "quality" },
+              POLICY: { type: string, menu: "modelImportPolicy", defaultValue: "warn" }
+            }
+          },
+          { opcode: "modelImportStatus", blockType: reporter, text: "model import status" },
+          { opcode: "cancelModelImport", blockType: command, text: "cancel model import" },
+          {
             opcode: "modelBudgetInfo",
             blockType: reporter,
             text: "model budget info [DETAIL]",
@@ -30026,6 +31505,17 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             arguments: {
               MODE: { type: string, menu: "antiAliasing", defaultValue: "temporal" }
             }
+          },
+          {
+            opcode: "setRasterShadowResolution",
+            blockType: command,
+            text: "set raster directional shadows [RESOLUTION]",
+            arguments: { RESOLUTION: { type: string, menu: "rasterShadowResolution", defaultValue: "2048" } }
+          },
+          {
+            opcode: "rasterShadowStatus",
+            blockType: reporter,
+            text: "raster shadow status"
           },
           {
             opcode: "setToneMapping",
@@ -30638,6 +32128,11 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
             acceptReporters: true,
             items: ["path-trace", "ray-trace", "raster"]
           },
+          rasterShadowResolution: {
+            acceptReporters: true,
+            items: ["off", "1024", "2048", "4096"]
+          },
+          modelImportPolicy: { acceptReporters: true, items: ["warn", "strict"] },
           antiAliasing: {
             acceptReporters: true,
             items: ["temporal", "ssaa-2x", "ssaa-4x", "fxaa", "none"]
@@ -30722,10 +32217,16 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       await this.runAsync(() => this.renderer.initialize());
     }
     start() {
-      this.run(() => this.renderer.start());
+      this.run(() => {
+        this.requireExampleReady();
+        this.renderer.start();
+      });
     }
     stop() {
-      this.run(() => this.renderer.stop());
+      this.run(() => {
+        this.cancelModelImport();
+        this.renderer.stop();
+      });
     }
     renderFrame() {
       this.run(() => this.renderer.renderFrame());
@@ -30774,10 +32275,104 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         if (this.lastBlockError.length > 0) {
           return `Error \u2014 ${this.lastBlockError.replace(/\s+/g, " ").slice(0, 180)}`;
         }
+        if (this.exampleSetup !== null && !this.exampleSetup.ready) {
+          const status = this.renderer.getStatus();
+          const textures = this.renderer.getTextureStatus();
+          const setup = this.exampleSetup;
+          const elapsed = Math.max(0, Math.floor((Date.now() - setup.startedAt) / 1e3));
+          return `Preparing scene (${elapsed}s) \u2014 textures ${textures.loaded}/${setup.textures}; materials ${status.materials}/${setup.materials}; triangles ${status.triangles}/${setup.triangles}; ${status.message}`;
+        }
         return this.renderer.getRenderProgress();
       } catch (error) {
         this.captureError(error);
         return `Error \u2014 ${this.lastBlockError.replace(/\s+/g, " ").slice(0, 180)}`;
+      }
+    }
+    getRuntimeVersion() {
+      return PRIOSDK_RUNTIME_BUILD;
+    }
+    clearRendererError() {
+      this.lastBlockError = "";
+      this.errorEpoch += 1;
+    }
+    beginExampleSetup(args) {
+      this.clearRendererError();
+      this.exampleSetup = null;
+      this.run(() => {
+        this.exampleSetup = {
+          startedAt: Date.now(),
+          textures: 0,
+          materials: 0,
+          triangles: 0,
+          environment: false,
+          backplate: false,
+          ready: false
+        };
+        const count = (name2) => {
+          const value = this.number(args[name2]);
+          if (!Number.isSafeInteger(value) || value < 0) {
+            throw new TypeError(`Expected ${name2.toLowerCase()} must be a nonnegative safe integer.`);
+          }
+          return value;
+        };
+        this.exampleSetup = {
+          startedAt: Date.now(),
+          textures: count("TEXTURES"),
+          materials: count("MATERIALS"),
+          triangles: count("TRIANGLES"),
+          environment: this.boolean(args.ENVIRONMENT),
+          backplate: this.boolean(args.BACKPLATE),
+          ready: false
+        };
+      });
+    }
+    assertExampleReady() {
+      this.run(() => {
+        const setup = this.exampleSetup;
+        if (setup === null) throw new Error("Begin scene setup before validating it.");
+        setup.ready = false;
+        if (this.lastBlockError) throw new Error(this.lastBlockError);
+        const status = this.renderer.getStatus();
+        const textures = this.renderer.getTextureStatus();
+        const missing = [];
+        if (status.state !== "ready" && status.state !== "running") missing.push(`renderer is ${status.state}: ${status.message}`);
+        if (textures.loaded < setup.textures) missing.push(`textures ${textures.loaded}/${setup.textures}`);
+        if (textures.loading > 0) missing.push(`${textures.loading} textures are still loading`);
+        if (status.materials < setup.materials) missing.push(`materials ${status.materials}/${setup.materials}`);
+        if (status.triangles < setup.triangles) missing.push(`triangles ${status.triangles}/${setup.triangles}`);
+        if (setup.environment && this.renderer.getEnvironmentMapStatus().state !== "ready") missing.push("environment is not ready");
+        if (setup.backplate && this.renderer.getBackplateMapStatus().state !== "ready") missing.push("background is not ready");
+        if (missing.length > 0) throw new Error(`Scene setup incomplete: ${missing.join("; ")}. The preview is not the completed room. Inspect the renderer diagnostic report.`);
+        setup.ready = true;
+      });
+    }
+    exampleReady() {
+      return this.exampleSetup?.ready === true && this.lastBlockError.length === 0;
+    }
+    exampleSetupFailed() {
+      const state = this.renderer.getStatus().state;
+      return this.lastBlockError.length > 0 || state === "error" || state === "lost" || state === "destroyed";
+    }
+    rendererDiagnosticReport() {
+      try {
+        this.ensureBackend();
+        return JSON.stringify({
+          runtime: PRIOSDK_RUNTIME_BUILD,
+          firstBlockError: this.lastBlockError || null,
+          setup: this.exampleSetup,
+          textures: this.renderer.getTextureStatus(),
+          environment: this.renderer.getEnvironmentMapStatus().state,
+          backplate: this.renderer.getBackplateMapStatus().state,
+          renderer: this.hasRendererMethod("getRenderDiagnostics") ? this.invokeRenderer("getRenderDiagnostics") : this.renderer.getStatus()
+        });
+      } catch (error) {
+        this.captureError(error);
+        return JSON.stringify({ runtime: PRIOSDK_RUNTIME_BUILD, firstBlockError: this.lastBlockError });
+      }
+    }
+    requireExampleReady() {
+      if (this.exampleSetup !== null && !this.exampleReady()) {
+        throw new Error(this.lastBlockError || "Scene setup has not been validated. Run validate scene setup before rendering.");
       }
     }
     outputSize() {
@@ -30861,6 +32456,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     clearScene() {
       this.run(() => {
+        this.cancelModelImport();
         this.renderer.clearScene();
         this.physics.removeRendererBindings("sphere");
         this.physics.removeRendererBindings("object");
@@ -31304,6 +32900,48 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         ...resolveModelBudget(this.modelDetail(args.DETAIL))
       }) ?? "{}", "{}");
     }
+    async importGltfModel(args) {
+      return this.runAsyncReporter(async () => {
+        if (this.modelImportAbort) throw new Error("A model import is already running. Wait for it or use cancel model import.");
+        const detail = this.modelDetail(args.DETAIL);
+        const policy = this.text(args.POLICY);
+        if (policy !== "warn" && policy !== "strict") throw new TypeError("Material handling must be warn or strict.");
+        this.ensureModelTriangleBudget(detail);
+        const importer = this.modelImporter;
+        const controller = new AbortController();
+        this.modelImportAbort = controller;
+        this.modelSourceLoading = true;
+        const timeout = setTimeout(() => controller.abort(new Error("Model import exceeded five minutes; check model import status and its resources.")), 3e5);
+        try {
+          const resolved = await resolveModelSource(this.text(args.SOURCE), resolveModelBudget(detail).maxSourceBytes, controller.signal);
+          if (this.modelImportAbort === controller) this.modelSourceLoading = false;
+          const result = await importer.importGltf(resolved.source, {
+            budget: detail,
+            ...resolved.resolveResource && { resolveResource: resolved.resolveResource },
+            signal: controller.signal,
+            materialPolicy: policy
+          });
+          return JSON.stringify(result);
+        } finally {
+          clearTimeout(timeout);
+          if (this.modelImportAbort === controller) {
+            this.modelImportAbort = null;
+            this.modelSourceLoading = false;
+          }
+        }
+      }, "");
+    }
+    modelImportStatus() {
+      return this.runReporter(() => JSON.stringify({
+        ...this.modelImporter.getStatus(),
+        ...this.modelSourceLoading ? { phase: "source", message: "Loading model source" } : {},
+        sourceLoading: this.modelSourceLoading
+      }), "{}");
+    }
+    cancelModelImport() {
+      this.modelImportAbort?.abort();
+      this.modelImporter?.cancel();
+    }
     createObject(args) {
       return this.runReporter(() => this.invokeRendererHandle("createObject", {
         mesh: this.text(args.MESH),
@@ -31518,6 +33156,15 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         this.renderer.updateSettings({ antiAliasing });
       });
     }
+    setRasterShadowResolution(args) {
+      this.run(() => {
+        const value = this.text(args.RESOLUTION);
+        this.renderer.setRasterShadowResolution(value === "off" ? 0 : Number(value));
+      });
+    }
+    rasterShadowStatus() {
+      return this.runReporter(() => JSON.stringify(this.renderer.getRasterShadowStatus()), "{}");
+    }
     setToneMapping(args) {
       this.run(() => {
         const toneMapping = this.text(args.MODE);
@@ -31622,6 +33269,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     async renderExactSamples(args) {
       await this.runAsync(async () => {
+        this.requireExampleReady();
         const samples = this.number(args.SAMPLES);
         const batch = this.number(args.BATCH);
         if (!Number.isFinite(samples) || !Number.isFinite(batch)) {
@@ -31930,10 +33578,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       this.run(() => {
         const action = this.text(args.ACTION);
         const handle = this.text(args.BODY);
-        const vector = this.physicsVec3(args.X, args.Y, args.Z);
-        if (action === "force") this.physics.addForce(handle, vector);
-        else if (action === "impulse") this.physics.applyImpulse(handle, vector);
-        else if (action === "torque-impulse") this.physics.applyTorqueImpulse(handle, vector);
+        const vector2 = this.physicsVec3(args.X, args.Y, args.Z);
+        if (action === "force") this.physics.addForce(handle, vector2);
+        else if (action === "impulse") this.physics.applyImpulse(handle, vector2);
+        else if (action === "torque-impulse") this.physics.applyTorqueImpulse(handle, vector2);
         else throw new TypeError("Unknown physics vector action.");
       });
     }
@@ -31975,6 +33623,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     destroyBackend() {
       if (!this.backendAvailable) return;
       this.backendAvailable = false;
+      this.cancelModelImport();
       this.backendGeneration += 1;
       this.removeBeforeTracedFrameListener?.();
       this.removePresentedFrameListener?.();
@@ -31992,6 +33641,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         verticalFovDegrees: DEFAULT_CAMERA.verticalFovDegrees
       };
       this.offlineCaptureInProgress = false;
+      this.exampleSetup = null;
     }
     ensureBackend() {
       if (this.terminallyDisposed) {
@@ -32000,13 +33650,12 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       if (this.backendAvailable && this.renderer.getStatus().state !== "destroyed") return;
       this.destroyBackend();
       this.createBackend();
-      this.lastBlockError = "";
     }
-    blockType(name) {
-      return this.scratch.BlockType[name] ?? name.toLowerCase();
+    blockType(name2) {
+      return this.scratch.BlockType[name2] ?? name2.toLowerCase();
     }
-    argumentType(name) {
-      return this.scratch.ArgumentType[name] ?? name.toLowerCase();
+    argumentType(name2) {
+      return this.scratch.ArgumentType[name2] ?? name2.toLowerCase();
     }
     number(value) {
       return this.scratch.Cast.toNumber(value);
@@ -32168,20 +33817,20 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       }
       return parsed;
     }
-    hasRendererMethod(name) {
-      return typeof this.renderer[name] === "function";
+    hasRendererMethod(name2) {
+      return typeof this.renderer[name2] === "function";
     }
-    invokeRenderer(name, ...args) {
-      const method = this.renderer[name];
+    invokeRenderer(name2, ...args) {
+      const method = this.renderer[name2];
       if (typeof method !== "function") {
-        throw new Error(`Advanced scene method ${name} is not available in this renderer build.`);
+        throw new Error(`Advanced scene method ${name2} is not available in this renderer build.`);
       }
       return Reflect.apply(method, this.renderer, args);
     }
-    invokeRendererHandle(name, ...args) {
-      const result = this.invokeRenderer(name, ...args);
+    invokeRendererHandle(name2, ...args) {
+      const result = this.invokeRenderer(name2, ...args);
       if (typeof result !== "string" || result.length === 0) {
-        throw new TypeError(`Advanced scene method ${name} did not return a resource handle.`);
+        throw new TypeError(`Advanced scene method ${name2} did not return a resource handle.`);
       }
       return result;
     }
@@ -32189,7 +33838,6 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       try {
         this.ensureBackend();
         operation();
-        this.lastBlockError = "";
       } catch (error) {
         this.captureError(error);
       }
@@ -32198,7 +33846,6 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       try {
         this.ensureBackend();
         const result = operation();
-        this.lastBlockError = "";
         return result;
       } catch (error) {
         this.captureError(error);
@@ -32207,34 +33854,31 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     async runAsync(operation) {
       let generation = this.backendGeneration;
-      const errorRevision = this.blockErrorRevision;
+      const errorEpoch = this.errorEpoch;
       try {
         this.ensureBackend();
         generation = this.backendGeneration;
-        this.lastBlockError = "";
         await operation();
-        if (generation === this.backendGeneration && errorRevision === this.blockErrorRevision) this.lastBlockError = "";
       } catch (error) {
-        if (generation === this.backendGeneration) this.captureError(error);
+        if (generation === this.backendGeneration && errorEpoch === this.errorEpoch) this.captureError(error);
       }
     }
     async runAsyncReporter(operation, fallback) {
       let generation = this.backendGeneration;
-      const errorRevision = this.blockErrorRevision;
+      const errorEpoch = this.errorEpoch;
       try {
         this.ensureBackend();
         generation = this.backendGeneration;
-        this.lastBlockError = "";
         const result = await operation();
-        if (generation === this.backendGeneration && errorRevision === this.blockErrorRevision) this.lastBlockError = "";
         return result;
       } catch (error) {
-        if (generation === this.backendGeneration) this.captureError(error);
+        if (generation === this.backendGeneration && errorEpoch === this.errorEpoch) this.captureError(error);
         return fallback;
       }
     }
     captureError(error) {
       this.blockErrorRevision += 1;
+      if (this.lastBlockError.length > 0) return;
       if (error instanceof Error) {
         this.lastBlockError = error.message;
         return;
@@ -32285,17 +33929,1395 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     return pieces.join("");
   }
 
+  // src/renderer/post/guided-reconstruction-graph.ts
+  var GUIDED_RECONSTRUCTION_INPUT_CHANNELS = 16;
+  var GUIDED_RECONSTRUCTION_TILE_SIZE = 128;
+  var GUIDED_RECONSTRUCTION_HALO = 16;
+  function createGuidedReconstructionGraph() {
+    const nodes = [];
+    const channels = /* @__PURE__ */ new Map([["input", GUIDED_RECONSTRUCTION_INPUT_CHANNELS]]);
+    let parameterCount = 0;
+    const append = (name2, operation, inputs, outputChannels, kernel = 1, stride = 1, groups = 1, relu = false) => {
+      const inputChannels = channels.get(inputs[0] ?? "");
+      if (inputChannels === void 0) throw new Error("Graph references an unknown input.");
+      const weightOffset = parameterCount;
+      if (operation === "conv") parameterCount += outputChannels * (inputChannels / groups) * kernel * kernel;
+      const biasOffset = parameterCount;
+      if (operation === "conv") parameterCount += outputChannels;
+      nodes.push(Object.freeze({
+        name: name2,
+        operation,
+        inputs: Object.freeze([...inputs]),
+        channels: outputChannels,
+        kernel,
+        stride,
+        groups,
+        relu,
+        weightOffset,
+        biasOffset
+      }));
+      channels.set(name2, outputChannels);
+      return name2;
+    };
+    const residual = (prefix, input, count) => {
+      const depthwise = append(`${prefix}.depthwise`, "conv", [input], count, 3, 1, count, true);
+      const pointwise = append(`${prefix}.pointwise`, "conv", [depthwise], count);
+      return append(`${prefix}.residual`, "add", [input, pointwise], count, 1, 1, 1, true);
+    };
+    let full = append("stem", "conv", ["input"], 32, 3, 1, 1, true);
+    for (let index = 0; index < 3; index++) full = residual(`full.${index}`, full, 32);
+    const down = append("down.depthwise", "conv", [full], 32, 3, 2, 32, true);
+    let half = append("down.pointwise", "conv", [down], 48, 1, 1, 1, true);
+    for (let index = 0; index < 2; index++) half = residual(`half.${index}`, half, 48);
+    const up = append("up", "nearest-2x", [half], 48);
+    const skip = append("skip", "concat", [full, up], 80);
+    let fused = append("fuse", "conv", [skip], 32, 1, 1, 1, true);
+    for (let index = 0; index < 2; index++) fused = residual(`final.${index}`, fused, 32);
+    const native = append("head.native", "conv", [fused], 4);
+    const doubled = append("head.2x", "conv", [fused], 16);
+    return Object.freeze({
+      schema: "priosdk-guided-graph-v1",
+      layout: "nchw",
+      inputChannels: 16,
+      halo: 16,
+      nodes: Object.freeze(nodes),
+      outputs: Object.freeze({ native, "2x": doubled }),
+      parameterCount
+    });
+  }
+  function assertGuidedModel(model, allowFixture = false) {
+    const expected = createGuidedReconstructionGraph();
+    if (JSON.stringify(model.graph) !== JSON.stringify(expected)) {
+      throw new Error("Unsupported guided reconstruction graph.");
+    }
+    if (model.weights.length !== expected.parameterCount || !model.weights.every(Number.isFinite)) {
+      throw new Error("Guided reconstruction weights are missing or invalid.");
+    }
+    const source = model.provenance;
+    if (allowFixture && source.source === "test-fixture") return;
+    if (source.source !== "renderer-paired" || !source.qualityGatePassed || !/^[a-f0-9]{64}$/i.test(source.datasetSha256) || !/^[a-f0-9]{64}$/i.test(source.weightsSha256) || !Number.isSafeInteger(source.trainingSeed)) {
+      throw new Error("Guided reconstruction requires verified paired-render training and quality evidence.");
+    }
+    const groups = [source.trainingScenes, source.validationScenes, source.testScenes];
+    if (groups.some((group) => group.length === 0)) throw new Error("All scene partitions are required.");
+    const names = groups.flat();
+    if (new Set(names).size !== names.length) throw new Error("Training and held-out scenes overlap.");
+  }
+  async function verifyGuidedModel(model) {
+    assertGuidedModel(model);
+    const bytes = new ArrayBuffer(model.weights.length * 4);
+    const view = new DataView(bytes);
+    model.weights.forEach((weight, index) => view.setFloat32(index * 4, weight, true));
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
+    const fingerprint = Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
+    if (fingerprint !== model.provenance.weightsSha256.toLowerCase()) {
+      throw new Error("Guided reconstruction model fingerprint does not match its weights.");
+    }
+  }
+  function assertGuidedTensor(tensor) {
+    for (const value of [tensor.channels, tensor.width, tensor.height]) {
+      if (!Number.isSafeInteger(value) || value < 1 || value > 16384) {
+        throw new RangeError("Guided tensor dimensions must be positive bounded integers.");
+      }
+    }
+    if (tensor.data.length !== tensor.channels * tensor.width * tensor.height) {
+      throw new RangeError("Guided tensor storage does not match its shape.");
+    }
+  }
+  function guidedNodesForMode(graph, mode) {
+    const output = graph.outputs[mode];
+    if (output === void 0) throw new Error("Unknown guided reconstruction mode.");
+    const required = /* @__PURE__ */ new Set([output]);
+    for (let index = graph.nodes.length - 1; index >= 0; index--) {
+      const node = graph.nodes[index];
+      if (required.has(node.name)) for (const input of node.inputs) required.add(input);
+    }
+    return graph.nodes.filter((node) => required.has(node.name));
+  }
+  function guidedNodeShape(node, input) {
+    const factor = node.operation === "nearest-2x" ? 2 : 1;
+    return [node.channels, Math.ceil(input.height / node.stride) * factor, Math.ceil(input.width / node.stride) * factor];
+  }
+  function runGuidedNodeCpu(node, input, second, weights) {
+    assertGuidedTensor(input);
+    if (second !== void 0) assertGuidedTensor(second);
+    const [channels, height, width] = guidedNodeShape(node, input);
+    const data = new Float32Array(channels * height * width);
+    const sourcePlane = input.width * input.height;
+    const outputPlane = width * height;
+    if (node.operation === "add" || node.operation === "concat") {
+      if (second === void 0 || second.width !== input.width || second.height !== input.height || node.operation === "add" && second.channels !== input.channels) {
+        throw new Error("Guided graph skip connection shapes do not match.");
+      }
+    }
+    if (node.operation === "conv") {
+      const inputsPerGroup = input.channels / node.groups;
+      const outputsPerGroup = channels / node.groups;
+      if (!Number.isInteger(inputsPerGroup) || !Number.isInteger(outputsPerGroup) || node.biasOffset + channels > weights.length) throw new Error("Invalid grouped convolution weights.");
+      const padding = Math.floor(node.kernel / 2);
+      for (let channel = 0; channel < channels; channel++) {
+        const firstChannel = Math.floor(channel / outputsPerGroup) * inputsPerGroup;
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          let sum = weights[node.biasOffset + channel];
+          for (let local = 0; local < inputsPerGroup; local++) {
+            for (let ky = 0; ky < node.kernel; ky++) for (let kx = 0; kx < node.kernel; kx++) {
+              const sx = x * node.stride + kx - padding;
+              const sy = y * node.stride + ky - padding;
+              if (sx < 0 || sy < 0 || sx >= input.width || sy >= input.height) continue;
+              const weightIndex = node.weightOffset + ((channel * inputsPerGroup + local) * node.kernel + ky) * node.kernel + kx;
+              const value = input.data[(firstChannel + local) * sourcePlane + sy * input.width + sx];
+              sum = Math.fround(sum + Math.fround(value * weights[weightIndex]));
+            }
+          }
+          data[channel * outputPlane + y * width + x] = node.relu ? Math.max(0, sum) : sum;
+        }
+      }
+    } else {
+      for (let channel = 0; channel < channels; channel++) {
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+          const index = channel * outputPlane + y * width + x;
+          let value;
+          if (node.operation === "nearest-2x") {
+            value = input.data[channel * sourcePlane + Math.floor(y / 2) * input.width + Math.floor(x / 2)];
+          } else if (node.operation === "concat") {
+            value = channel < input.channels ? input.data[index] : second.data[(channel - input.channels) * sourcePlane + y * width + x];
+          } else {
+            value = Math.fround(input.data[index] + second.data[index]);
+          }
+          data[index] = node.relu ? Math.max(0, value) : value;
+        }
+      }
+    }
+    return { channels, width, height, data };
+  }
+  function runGuidedGraphCpu(graph, weights, input, mode) {
+    if (input.channels !== graph.inputChannels || input.width % 2 || input.height % 2) {
+      throw new Error("Guided graph requires 16-channel, even-sized input tensors.");
+    }
+    const nodes = guidedNodesForMode(graph, mode);
+    const tensors = /* @__PURE__ */ new Map([["input", input]]);
+    const uses = /* @__PURE__ */ new Map();
+    for (const node of nodes) for (const name2 of node.inputs) uses.set(name2, (uses.get(name2) ?? 0) + 1);
+    for (const node of nodes) {
+      const first = tensors.get(node.inputs[0]);
+      if (first === void 0) throw new Error("Guided graph input is unavailable.");
+      const second = node.inputs.length > 1 ? tensors.get(node.inputs[1]) : void 0;
+      tensors.set(node.name, runGuidedNodeCpu(node, first, second, weights));
+      for (const name2 of node.inputs) {
+        const remaining = (uses.get(name2) ?? 1) - 1;
+        uses.set(name2, remaining);
+        if (remaining === 0) tensors.delete(name2);
+      }
+    }
+    return tensors.get(graph.outputs[mode]);
+  }
+  function planGuidedTiles(width, height, coreSize = GUIDED_RECONSTRUCTION_TILE_SIZE) {
+    if (![width, height, coreSize].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 16384) || coreSize % 2 !== 0 || coreSize > 512) throw new RangeError("Invalid guided reconstruction tile extent.");
+    const halo = GUIDED_RECONSTRUCTION_HALO;
+    const tiles = [];
+    for (let y = 0; y < height; y += coreSize) for (let x = 0; x < width; x += coreSize) {
+      tiles.push({
+        x,
+        y,
+        width: Math.min(coreSize, width - x),
+        height: Math.min(coreSize, height - y),
+        inputX: x - halo,
+        inputY: y - halo,
+        inputSize: coreSize + halo * 2,
+        halo
+      });
+    }
+    return tiles;
+  }
+  function extractGuidedTile(input, tile) {
+    assertGuidedTensor(input);
+    const size = tile.inputSize;
+    const data = new Float32Array(input.channels * size * size);
+    for (let channel = 0; channel < input.channels; channel++) {
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const sx = Math.min(input.width - 1, Math.max(0, tile.inputX + x));
+        const sy = Math.min(input.height - 1, Math.max(0, tile.inputY + y));
+        data[channel * size * size + y * size + x] = input.data[channel * input.width * input.height + sy * input.width + sx];
+      }
+    }
+    return { channels: input.channels, width: size, height: size, data };
+  }
+
+  // src/renderer/post/guided-reconstruction-shader.ts
+  var OPERATION_INDEX = { conv: 0, add: 1, concat: 2, "nearest-2x": 3 };
+  function buildGuidedNodeConstants(node, input) {
+    const [channels, height, width] = guidedNodeShape(node, input);
+    return new Uint32Array([
+      input.channels,
+      input.height,
+      input.width,
+      channels,
+      height,
+      width,
+      node.kernel,
+      node.stride,
+      node.groups,
+      node.weightOffset,
+      node.biasOffset,
+      node.relu ? 1 : 0,
+      OPERATION_INDEX[node.operation],
+      0,
+      0,
+      0
+    ]);
+  }
+  var GUIDED_RECONSTRUCTION_GRAPH_SHADER = (
+    /* wgsl */
+    `
+struct Parameters {
+  input_shape: vec4<u32>,
+  output_shape: vec4<u32>,
+  convolution: vec4<u32>,
+  operation: vec4<u32>,
+}
+@group(0) @binding(0) var<uniform> parameters: Parameters;
+@group(0) @binding(1) var<storage, read> first: array<f32>;
+@group(0) @binding(2) var<storage, read> second: array<f32>;
+@group(0) @binding(3) var<storage, read> weights: array<f32>;
+@group(0) @binding(4) var<storage, read_write> output: array<f32>;
+
+@compute @workgroup_size(128)
+fn main(@builtin(global_invocation_id) invocation: vec3<u32>) {
+  let index = invocation.x;
+  let input_channels = parameters.input_shape.x;
+  let input_height = parameters.input_shape.y;
+  let input_width = parameters.input_shape.z;
+  let output_channels = parameters.input_shape.w;
+  let output_height = parameters.output_shape.x;
+  let output_width = parameters.output_shape.y;
+  let input_plane = input_width * input_height;
+  let output_plane = output_width * output_height;
+  if (index >= output_channels * output_plane) { return; }
+  let channel = index / output_plane;
+  let y = (index % output_plane) / output_width;
+  let x = index % output_width;
+  var value = 0.0;
+  if (parameters.operation.x == 0u) {
+    let kernel = parameters.output_shape.z;
+    let stride = parameters.output_shape.w;
+    let groups = parameters.convolution.x;
+    let inputs_per_group = input_channels / groups;
+    let outputs_per_group = output_channels / groups;
+    let first_channel = (channel / outputs_per_group) * inputs_per_group;
+    let padding = i32(kernel / 2u);
+    value = weights[parameters.convolution.z + channel];
+    for (var local = 0u; local < inputs_per_group; local++) {
+      for (var ky = 0u; ky < kernel; ky++) {
+        for (var kx = 0u; kx < kernel; kx++) {
+          let sx = i32(x * stride + kx) - padding;
+          let sy = i32(y * stride + ky) - padding;
+          if (sx < 0 || sy < 0 || sx >= i32(input_width) || sy >= i32(input_height)) { continue; }
+          let weight_index = parameters.convolution.y
+            + ((channel * inputs_per_group + local) * kernel + ky) * kernel + kx;
+          let source_index = (first_channel + local) * input_plane + u32(sy) * input_width + u32(sx);
+          value = value + first[source_index] * weights[weight_index];
+        }
+      }
+    }
+  } else if (parameters.operation.x == 1u) {
+    value = first[index] + second[index];
+  } else if (parameters.operation.x == 2u) {
+    if (channel < input_channels) { value = first[index]; }
+    else { value = second[(channel - input_channels) * input_plane + y * input_width + x]; }
+  } else {
+    value = first[channel * input_plane + (y / 2u) * input_width + x / 2u];
+  }
+  if (parameters.convolution.w != 0u) { value = max(0.0, value); }
+  output[index] = value;
+}
+`
+  );
+
+  // src/renderer/post/inference-backends-types.ts
+  function throwIfGuidedAborted(signal) {
+    if (signal?.aborted) throw new DOMException("Reconstruction was cancelled.", "AbortError");
+  }
+  async function awaitGuidedOperation(operation, timeoutMs, signal, onLateValue) {
+    if (signal?.aborted) {
+      void operation.then((value) => onLateValue?.(value), () => void 0).catch(() => void 0);
+      throwIfGuidedAborted(signal);
+    }
+    let timer;
+    let abort;
+    let abandoned = false;
+    try {
+      return await Promise.race([
+        operation.then((value) => {
+          if (abandoned) onLateValue?.(value);
+          return value;
+        }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Reconstruction operation timed out.")), timeoutMs);
+          abort = () => reject(new DOMException("Reconstruction was cancelled.", "AbortError"));
+          signal?.addEventListener("abort", abort, { once: true });
+          if (signal?.aborted) abort();
+        })
+      ]);
+    } catch (error) {
+      abandoned = true;
+      throw error;
+    } finally {
+      if (timer !== void 0) clearTimeout(timer);
+      if (abort !== void 0) signal?.removeEventListener("abort", abort);
+    }
+  }
+  function assertGuidedParity(actual, expected) {
+    if (actual.length !== expected.length) throw new Error("Inference output shape does not match the reference.");
+    for (let index = 0; index < expected.length; index++) {
+      const left = actual[index];
+      const right = expected[index];
+      if (!Number.isFinite(left) || !Number.isFinite(right) || Math.abs(left - right) > 3e-4 + Math.abs(right) * 1e-3) {
+        throw new Error(`Inference numerical probe failed at output ${index}.`);
+      }
+    }
+  }
+
+  // src/renderer/post/inference-backends-webgpu.ts
+  var TRANSFER_SHADER = (
+    /* wgsl */
+    `
+struct Parameters {
+  frame: vec4<u32>,
+  tile: vec4<u32>,
+  extent: vec4<u32>,
+}
+@group(0) @binding(0) var<uniform> p: Parameters;
+@group(0) @binding(1) var<storage, read> source: array<f32>;
+@group(0) @binding(2) var<storage, read_write> destination: array<f32>;
+
+@compute @workgroup_size(128)
+fn gather(@builtin(global_invocation_id) id: vec3<u32>) {
+  let plane = p.tile.z * p.tile.z;
+  if (id.x >= p.frame.z * plane) { return; }
+  let channel = id.x / plane;
+  let x = id.x % p.tile.z;
+  let y = (id.x % plane) / p.tile.z;
+  let sx = u32(clamp(i32(p.tile.x + x) - i32(p.tile.w), 0, i32(p.frame.x) - 1));
+  let sy = u32(clamp(i32(p.tile.y + y) - i32(p.tile.w), 0, i32(p.frame.y) - 1));
+  destination[id.x] = source[channel * p.frame.x * p.frame.y + sy * p.frame.x + sx];
+}
+
+@compute @workgroup_size(128)
+fn scatter(@builtin(global_invocation_id) id: vec3<u32>) {
+  let plane = p.extent.x * p.extent.y;
+  if (id.x >= p.frame.z * plane) { return; }
+  let channel = id.x / plane;
+  let x = id.x % p.extent.x;
+  let y = (id.x % plane) / p.extent.x;
+  let index = channel * p.frame.x * p.frame.y + (p.tile.y + y) * p.frame.x + p.tile.x + x;
+  destination[index] = source[channel * p.tile.z * p.tile.z + (y + p.tile.w) * p.tile.z + x + p.tile.w];
+}
+`
+  );
+  function shapeTensor(shape) {
+    return { ...shape, data: new Float32Array(0) };
+  }
+  var GuidedWebGpuBackend = class {
+    constructor(device, model, timeoutMs) {
+      this.device = device;
+      this.model = model;
+      this.timeoutMs = timeoutMs;
+    }
+    device;
+    model;
+    timeoutMs;
+    kind = "webgpu";
+    buffers = /* @__PURE__ */ new Set();
+    weights;
+    pipeline;
+    transfer;
+    plan;
+    disposed = false;
+    pushScopes() {
+      this.device.pushErrorScope("out-of-memory");
+      this.device.pushErrorScope("internal");
+      this.device.pushErrorScope("validation");
+    }
+    async popScopes(signal) {
+      const pending = [this.device.popErrorScope(), this.device.popErrorScope(), this.device.popErrorScope()];
+      const errors = await awaitGuidedOperation(Promise.all(pending), this.timeoutMs, signal);
+      return errors.find((error) => error !== null) ?? null;
+    }
+    createBuffer(size, usage, label) {
+      if (this.disposed) throw new Error("Reconstruction GPU backend was disposed.");
+      if (size > this.device.limits.maxBufferSize || usage & GPUBufferUsage.STORAGE && size > this.device.limits.maxStorageBufferBindingSize) {
+        throw new RangeError("Reconstruction tensor exceeds the selected GPU buffer limits.");
+      }
+      const buffer = this.device.createBuffer({ size: Math.max(4, size), usage, label });
+      this.buffers.add(buffer);
+      return buffer;
+    }
+    destroyBuffer(buffer) {
+      this.buffers.delete(buffer);
+      buffer.destroy();
+    }
+    async initialize(signal) {
+      throwIfGuidedAborted(signal);
+      if (this.disposed) throw new Error("Reconstruction GPU backend is unavailable.");
+      if (this.pipeline !== void 0) return;
+      this.pushScopes();
+      let failure;
+      try {
+        const module = this.device.createShaderModule({ label: "Guided reconstruction graph", code: GUIDED_RECONSTRUCTION_GRAPH_SHADER });
+        const pipeline = await awaitGuidedOperation(this.device.createComputePipelineAsync({
+          label: "Guided reconstruction node",
+          layout: "auto",
+          compute: { module, entryPoint: "main" }
+        }), this.timeoutMs, signal);
+        throwIfGuidedAborted(signal);
+        if (this.disposed) throw new Error("Reconstruction GPU backend was disposed.");
+        this.weights = this.createBuffer(
+          this.model.weights.byteLength,
+          GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+          "Guided reconstruction trained weights"
+        );
+        this.device.queue.writeBuffer(this.weights, 0, this.model.weights);
+        this.pipeline = pipeline;
+      } catch (error) {
+        failure = error;
+      }
+      const validation = await this.popScopes(signal);
+      if (failure !== void 0) throw failure;
+      if (validation !== null) {
+        if (this.weights !== void 0) this.destroyBuffer(this.weights);
+        this.weights = void 0;
+        this.pipeline = void 0;
+        throw new Error(`Reconstruction shader validation failed: ${validation.message}`);
+      }
+    }
+    releasePlan() {
+      if (this.plan === void 0) return;
+      for (const buffer of this.plan.buffers) this.destroyBuffer(buffer);
+      this.plan = void 0;
+    }
+    getPlan(input, mode) {
+      const key = `${mode}:${input.width}:${input.height}`;
+      if (this.plan?.key === key) return this.plan;
+      this.releasePlan();
+      if (input.channels !== 16 || input.width % 2 || input.height % 2 || input.width > 160 || input.height > 160) {
+        throw new RangeError("GPU reconstruction tiles require 16 channels and even extents no larger than 160.");
+      }
+      const buffers = [];
+      const slots = [];
+      const allocate = (size) => {
+        const reusable = slots.filter((slot) => slot.available && slot.size >= size).sort((a, b) => a.size - b.size)[0];
+        if (reusable !== void 0) {
+          reusable.available = false;
+          return reusable.buffer;
+        }
+        const buffer = this.createBuffer(
+          size,
+          GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+          "Guided reconstruction activation"
+        );
+        slots.push({ buffer, size, available: false });
+        buffers.push(buffer);
+        return buffer;
+      };
+      const release = (buffer) => {
+        slots.find((slot) => slot.buffer === buffer).available = true;
+      };
+      const nodes = guidedNodesForMode(this.model.graph, mode);
+      const uses = /* @__PURE__ */ new Map();
+      for (const node of nodes) for (const name2 of node.inputs) uses.set(name2, (uses.get(name2) ?? 0) + 1);
+      const inputBuffer = allocate(input.channels * input.width * input.height * 4);
+      const values = /* @__PURE__ */ new Map([["input", { shape: input, buffer: inputBuffer }]]);
+      const steps = [];
+      try {
+        for (const node of nodes) {
+          const first = values.get(node.inputs[0]);
+          const second = values.get(node.inputs[1] ?? "") ?? first;
+          const [channels, height, width] = guidedNodeShape(node, shapeTensor(first.shape));
+          const workgroups = Math.ceil(channels * height * width / 128);
+          if (workgroups > this.device.limits.maxComputeWorkgroupsPerDimension) {
+            throw new RangeError("Reconstruction tile exceeds the GPU dispatch limit.");
+          }
+          const output = allocate(channels * height * width * 4);
+          const constants = this.createBuffer(64, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, "Guided reconstruction node constants");
+          buffers.push(constants);
+          this.device.queue.writeBuffer(constants, 0, buildGuidedNodeConstants(node, shapeTensor(first.shape)));
+          const bindGroup = this.device.createBindGroup({ layout: this.pipeline.getBindGroupLayout(0), entries: [
+            { binding: 0, resource: { buffer: constants } },
+            { binding: 1, resource: { buffer: first.buffer } },
+            { binding: 2, resource: { buffer: second.buffer } },
+            { binding: 3, resource: { buffer: this.weights } },
+            { binding: 4, resource: { buffer: output } }
+          ] });
+          steps.push({ bindGroup, workgroups });
+          values.set(node.name, { shape: { channels, width, height }, buffer: output });
+          for (const name2 of node.inputs) {
+            const remaining = (uses.get(name2) ?? 1) - 1;
+            uses.set(name2, remaining);
+            if (remaining === 0) {
+              release(values.get(name2).buffer);
+              values.delete(name2);
+            }
+          }
+        }
+        const final = values.get(this.model.graph.outputs[mode]);
+        const readback = this.createBuffer(
+          final.shape.channels * final.shape.width * final.shape.height * 4,
+          GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+          "Guided reconstruction tile readback"
+        );
+        buffers.push(readback);
+        this.plan = { key, input: inputBuffer, output: final.buffer, shape: final.shape, readback, buffers, steps };
+        return this.plan;
+      } catch (error) {
+        for (const buffer of buffers) this.destroyBuffer(buffer);
+        throw error;
+      }
+    }
+    encodeGraph(encoder, plan) {
+      const pass = encoder.beginComputePass({ label: "Guided reconstruction graph inference" });
+      pass.setPipeline(this.pipeline);
+      for (const step of plan.steps) {
+        pass.setBindGroup(0, step.bindGroup);
+        pass.dispatchWorkgroups(step.workgroups);
+      }
+      pass.end();
+    }
+    async inferTile(input, mode, signal) {
+      assertGuidedTensor(input);
+      await this.initialize(signal);
+      this.pushScopes();
+      let failure;
+      let result;
+      try {
+        const plan = this.getPlan(input, mode);
+        this.device.queue.writeBuffer(plan.input, 0, input.data);
+        const encoder = this.device.createCommandEncoder({ label: "Guided reconstruction tile" });
+        this.encodeGraph(encoder, plan);
+        encoder.copyBufferToBuffer(
+          plan.output,
+          0,
+          plan.readback,
+          0,
+          plan.shape.channels * plan.shape.width * plan.shape.height * 4
+        );
+        this.device.queue.submit([encoder.finish()]);
+        await awaitGuidedOperation(plan.readback.mapAsync(GPUMapMode.READ), this.timeoutMs, signal);
+        throwIfGuidedAborted(signal);
+        result = { ...plan.shape, data: new Float32Array(plan.readback.getMappedRange().slice(0)) };
+        plan.readback.unmap();
+      } catch (error) {
+        failure = error;
+        this.releasePlan();
+      }
+      const validation = await this.popScopes(signal);
+      if (failure !== void 0) throw failure;
+      if (validation !== null) throw new Error(`Reconstruction GPU execution failed: ${validation.message}`);
+      return result;
+    }
+    async initializeTransfer(signal) {
+      if (this.transfer !== void 0) return;
+      const module = this.device.createShaderModule({ label: "Guided reconstruction tile transfer", code: TRANSFER_SHADER });
+      const [gather, scatter] = await awaitGuidedOperation(Promise.all(["gather", "scatter"].map((entryPoint) => this.device.createComputePipelineAsync({ layout: "auto", compute: { module, entryPoint } }))), this.timeoutMs, signal);
+      this.transfer = { gather, scatter };
+    }
+    createOutput(input, mode) {
+      const channels = mode === "native" ? 4 : 16;
+      return {
+        channels,
+        width: input.width,
+        height: input.height,
+        buffer: this.createBuffer(
+          channels * input.width * input.height * 4,
+          GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+          "Guided reconstruction complete output"
+        )
+      };
+    }
+    releaseOutput(tensor) {
+      if (this.buffers.has(tensor.buffer)) this.destroyBuffer(tensor.buffer);
+    }
+    createInput(input) {
+      assertGuidedTensor(input);
+      const buffer = this.createBuffer(
+        input.data.byteLength,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        "Guided reconstruction numerical probe input"
+      );
+      this.device.queue.writeBuffer(buffer, 0, input.data);
+      return { buffer, channels: input.channels, width: input.width, height: input.height };
+    }
+    async readProbe(tensor, signal) {
+      if (tensor.width > 8 || tensor.height > 8) throw new Error("Inference probe readback is restricted to 8 by 8 tensors.");
+      const bytes = tensor.channels * tensor.width * tensor.height * 4;
+      const readback = this.createBuffer(
+        bytes,
+        GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+        "Guided reconstruction interop numerical probe"
+      );
+      try {
+        const encoder = this.device.createCommandEncoder();
+        encoder.copyBufferToBuffer(tensor.buffer, 0, readback, 0, bytes);
+        this.device.queue.submit([encoder.finish()]);
+        await awaitGuidedOperation(readback.mapAsync(GPUMapMode.READ), this.timeoutMs, signal);
+        const data = new Float32Array(readback.getMappedRange().slice(0));
+        readback.unmap();
+        return { channels: tensor.channels, width: tensor.width, height: tensor.height, data };
+      } finally {
+        this.destroyBuffer(readback);
+      }
+    }
+    async transferGpuTile(kind, input, tiled, tile, signal) {
+      await this.initializeTransfer(signal);
+      this.pushScopes();
+      let constants;
+      let failure;
+      try {
+        constants = this.createBuffer(
+          48,
+          GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+          "Guided reconstruction interop tile bounds"
+        );
+        this.device.queue.writeBuffer(constants, 0, new Uint32Array([
+          input.width,
+          input.height,
+          input.channels,
+          0,
+          tile.x,
+          tile.y,
+          tile.inputSize,
+          tile.halo,
+          tile.width,
+          tile.height,
+          0,
+          0
+        ]));
+        const pipeline = this.transfer[kind];
+        const whole = { buffer: input.buffer, size: input.channels * input.width * input.height * 4 };
+        const part = { buffer: tiled, size: input.channels * tile.inputSize * tile.inputSize * 4 };
+        const group = this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
+          { binding: 0, resource: { buffer: constants } },
+          { binding: 1, resource: kind === "gather" ? whole : part },
+          { binding: 2, resource: kind === "gather" ? part : whole }
+        ] });
+        const encoder = this.device.createCommandEncoder({ label: `Guided reconstruction interop ${kind}` });
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, group);
+        pass.dispatchWorkgroups(Math.ceil(input.channels * (kind === "gather" ? tile.inputSize ** 2 : tile.width * tile.height) / 128));
+        pass.end();
+        this.device.queue.submit([encoder.finish()]);
+        await awaitGuidedOperation(this.device.queue.onSubmittedWorkDone(), this.timeoutMs, signal);
+      } catch (error) {
+        failure = error;
+      } finally {
+        if (constants !== void 0) this.destroyBuffer(constants);
+      }
+      const validation = await this.popScopes(signal);
+      if (failure !== void 0) throw failure;
+      if (validation !== null) throw new Error(`WebNN GPU tensor transfer failed: ${validation.message}`);
+    }
+    gatherGpuTile(input, tileBuffer, tile, signal) {
+      return this.transferGpuTile("gather", input, tileBuffer, tile, signal);
+    }
+    scatterGpuTile(tileBuffer, output, tile, signal) {
+      return this.transferGpuTile("scatter", output, tileBuffer, tile, signal);
+    }
+    async inferGpuTile(input, output, tile, mode, signal) {
+      await this.initialize(signal);
+      await this.initializeTransfer(signal);
+      const constants = [];
+      this.pushScopes();
+      let failure;
+      try {
+        const plan = this.getPlan({ channels: 16, width: tile.inputSize, height: tile.inputSize }, mode);
+        const encoder = this.device.createCommandEncoder({ label: "GPU-resident guided reconstruction tile" });
+        const transfer = (kind, source, destination, channels) => {
+          const buffer = this.createBuffer(48, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, "Guided reconstruction tile bounds");
+          constants.push(buffer);
+          this.device.queue.writeBuffer(buffer, 0, new Uint32Array([
+            input.width,
+            input.height,
+            channels,
+            0,
+            tile.x,
+            tile.y,
+            tile.inputSize,
+            tile.halo,
+            tile.width,
+            tile.height,
+            0,
+            0
+          ]));
+          const pipeline = this.transfer[kind];
+          const frameBytes = channels * input.width * input.height * 4;
+          const tileBytes = channels * tile.inputSize * tile.inputSize * 4;
+          const group = this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [
+            { binding: 0, resource: { buffer } },
+            { binding: 1, resource: { buffer: source, size: kind === "gather" ? frameBytes : tileBytes } },
+            { binding: 2, resource: { buffer: destination, size: kind === "gather" ? tileBytes : frameBytes } }
+          ] });
+          const pass = encoder.beginComputePass({ label: `Guided reconstruction ${kind}` });
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, group);
+          pass.dispatchWorkgroups(Math.ceil(channels * (kind === "gather" ? tile.inputSize ** 2 : tile.width * tile.height) / 128));
+          pass.end();
+        };
+        transfer("gather", input.buffer, plan.input, 16);
+        this.encodeGraph(encoder, plan);
+        transfer("scatter", plan.output, output.buffer, output.channels);
+        this.device.queue.submit([encoder.finish()]);
+        await awaitGuidedOperation(this.device.queue.onSubmittedWorkDone(), this.timeoutMs, signal);
+      } catch (error) {
+        failure = error;
+        this.releasePlan();
+      } finally {
+        for (const buffer of constants) this.destroyBuffer(buffer);
+      }
+      const validation = await this.popScopes(signal);
+      if (failure !== void 0) throw failure;
+      if (validation !== null) throw new Error(`GPU-resident reconstruction failed: ${validation.message}`);
+    }
+    dispose() {
+      this.disposed = true;
+      for (const buffer of this.buffers) buffer.destroy();
+      this.buffers.clear();
+      this.plan = void 0;
+      this.weights = void 0;
+      this.pipeline = void 0;
+      this.transfer = void 0;
+    }
+  };
+
+  // src/renderer/post/inference-backends-webnn.ts
+  function getGuidedWebNnEnvironment() {
+    const environment = globalThis;
+    if (typeof environment.navigator?.ml?.createContext !== "function" || typeof environment.MLGraphBuilder !== "function") {
+      return void 0;
+    }
+    return { ml: environment.navigator.ml, MLGraphBuilder: environment.MLGraphBuilder };
+  }
+  function assertGuidedWebNnOperators(context, builder) {
+    for (const name2 of ["createTensor", "writeTensor", "dispatch", "readTensor", "opSupportLimits", "destroy"]) {
+      if (typeof context[name2] !== "function") throw new Error(`WebNN context does not expose ${name2}.`);
+    }
+    const limits = context.opSupportLimits();
+    for (const name2 of ["conv2d", "add", "concat", "relu", "resample2d"]) {
+      if (typeof builder[name2] !== "function" || !(name2 in limits)) throw new Error(`WebNN does not support required ${name2}.`);
+      const visit = (value) => {
+        if (typeof value !== "object" || value === null) return;
+        const record2 = value;
+        if (Array.isArray(record2.dataTypes) && !record2.dataTypes.includes("float32")) {
+          throw new Error(`WebNN ${name2} does not support the model's float32 tensors.`);
+        }
+        for (const [key, child] of Object.entries(record2)) if (key !== "dataTypes") visit(child);
+      };
+      visit(limits[name2]);
+    }
+  }
+  function buildGuidedWebNnGraph(builder, model, width, height, mode) {
+    if (width % 2 || height % 2 || width < 2 || height < 2 || width > 160 || height > 160) {
+      throw new RangeError("WebNN reconstruction tiles require even extents no larger than 160.");
+    }
+    const input = builder.input("input", { dataType: "float32", shape: [1, 16, height, width] });
+    const operands = /* @__PURE__ */ new Map([["input", input]]);
+    const shapes = /* @__PURE__ */ new Map([["input", { channels: 16, width, height }]]);
+    for (const node of guidedNodesForMode(model.graph, mode)) {
+      const first = operands.get(node.inputs[0]);
+      const inputShape = shapes.get(node.inputs[0]);
+      let output;
+      if (node.operation === "conv") {
+        const weights = builder.constant(
+          { dataType: "float32", shape: [node.channels, inputShape.channels / node.groups, node.kernel, node.kernel] },
+          model.weights.slice(node.weightOffset, node.biasOffset)
+        );
+        const bias = builder.constant(
+          { dataType: "float32", shape: [node.channels] },
+          model.weights.slice(node.biasOffset, node.biasOffset + node.channels)
+        );
+        const padding = Math.floor(node.kernel / 2);
+        output = builder.conv2d(first, weights, {
+          inputLayout: "nchw",
+          filterLayout: "oihw",
+          padding: [padding, padding, padding, padding],
+          strides: [node.stride, node.stride],
+          groups: node.groups,
+          bias
+        });
+      } else if (node.operation === "add") {
+        output = builder.add(first, operands.get(node.inputs[1]));
+      } else if (node.operation === "concat") {
+        output = builder.concat(node.inputs.map((name2) => operands.get(name2)), 1);
+      } else {
+        output = builder.resample2d(first, { mode: "nearest-neighbor", scales: [2, 2], axes: [2, 3] });
+      }
+      if (node.relu) output = builder.relu(output);
+      const [channels, outputHeight, outputWidth] = guidedNodeShape(node, { ...inputShape, data: new Float32Array(0) });
+      const expected = [1, channels, outputHeight, outputWidth];
+      if (output.shape.length !== expected.length || output.shape.some((value, index) => value !== expected[index])) {
+        throw new Error(`WebNN graph shape mismatch at ${node.name}.`);
+      }
+      shapes.set(node.name, { channels, width: outputWidth, height: outputHeight });
+      operands.set(node.name, output);
+    }
+    return builder.build({ output: operands.get(model.graph.outputs[mode]) });
+  }
+  var GuidedWebNnBackend = class {
+    constructor(environment, model, preferNpu, timeoutMs) {
+      this.environment = environment;
+      this.model = model;
+      this.preferNpu = preferNpu;
+      this.timeoutMs = timeoutMs;
+    }
+    environment;
+    model;
+    preferNpu;
+    timeoutMs;
+    kind = "webnn";
+    context;
+    plan;
+    disposed = false;
+    lostReason;
+    get accelerated() {
+      return this.context?.accelerated;
+    }
+    get reportedDevices() {
+      const devices = this.plan?.graph.devices;
+      if (devices === void 0) return void 0;
+      return devices.filter((value) => value === "cpu" || value === "gpu" || value === "npu");
+    }
+    async initialize(signal) {
+      throwIfGuidedAborted(signal);
+      if (this.disposed || this.lostReason !== void 0) throw new Error(this.lostReason ?? "WebNN backend was disposed.");
+      if (this.context !== void 0) return this.context;
+      const context = await awaitGuidedOperation(this.environment.ml.createContext({
+        powerPreference: "high-performance",
+        accelerated: true,
+        deviceType: this.preferNpu ? "npu" : "gpu"
+      }), this.timeoutMs, signal, (value) => value.destroy());
+      if (this.disposed || signal?.aborted) {
+        context.destroy();
+        throwIfGuidedAborted(signal);
+        throw new Error("WebNN backend was disposed.");
+      }
+      try {
+        assertGuidedWebNnOperators(context, new this.environment.MLGraphBuilder(context));
+      } catch (error) {
+        context.destroy();
+        throw error;
+      }
+      this.context = context;
+      void context.lost?.then((info) => {
+        this.lostReason = `WebNN context was lost: ${info.message.slice(0, 256)}`;
+        this.dispose();
+      }, () => {
+        this.lostReason = "WebNN context was lost.";
+        this.dispose();
+      });
+      return context;
+    }
+    releasePlan() {
+      if (this.plan !== void 0) {
+        this.plan.input.destroy();
+        this.plan.output.destroy();
+        this.plan.graph.destroy();
+        this.plan = void 0;
+      }
+    }
+    async getPlan(input, mode, signal, device) {
+      const context = await this.initialize(signal);
+      const key = `${mode}:${input.width}:${input.height}:${device === void 0 ? "host" : "gpu"}`;
+      if (this.plan?.key === key) return this.plan;
+      this.releasePlan();
+      const tensors = [];
+      let graph;
+      try {
+        graph = await awaitGuidedOperation(buildGuidedWebNnGraph(
+          new this.environment.MLGraphBuilder(context),
+          this.model,
+          input.width,
+          input.height,
+          mode
+        ), this.timeoutMs, signal, (value) => value.destroy());
+        const channels = mode === "native" ? 4 : 16;
+        for (const descriptor of [
+          { dataType: "float32", shape: [1, 16, input.height, input.width], writable: true },
+          { dataType: "float32", shape: [1, channels, input.height, input.width], readable: true }
+        ]) {
+          const created = device === void 0 ? context.createTensor(descriptor) : context.createExportableTensor(descriptor, device);
+          tensors.push(await awaitGuidedOperation(created, this.timeoutMs, signal, (value) => value.destroy()));
+        }
+        throwIfGuidedAborted(signal);
+        if (this.disposed) throw new Error("WebNN context became unavailable.");
+        this.plan = { key, channels, width: input.width, height: input.height, input: tensors[0], output: tensors[1], graph };
+        return this.plan;
+      } catch (error) {
+        for (const tensor of tensors) tensor.destroy();
+        graph?.destroy();
+        throw error;
+      }
+    }
+    async inferTile(input, mode, signal) {
+      assertGuidedTensor(input);
+      if (input.channels !== 16) throw new RangeError("WebNN reconstruction requires 16 feature channels.");
+      const plan = await this.getPlan(input, mode, signal);
+      const context = this.context;
+      try {
+        context.writeTensor(plan.input, input.data);
+        context.dispatch(plan.graph, { input: plan.input }, { output: plan.output });
+        const bytes = await awaitGuidedOperation(context.readTensor(plan.output), this.timeoutMs, signal);
+        throwIfGuidedAborted(signal);
+        if (this.disposed) throw new Error("WebNN context became unavailable.");
+        if (bytes.byteLength !== plan.channels * plan.width * plan.height * 4) throw new Error("WebNN output byte count is invalid.");
+        const data = new Float32Array(bytes);
+        if (!data.every(Number.isFinite)) throw new Error("WebNN produced a non-finite reconstruction.");
+        return { channels: plan.channels, width: plan.width, height: plan.height, data };
+      } catch (error) {
+        this.dispose();
+        throw error;
+      }
+    }
+    async assertGpuInterop(signal) {
+      const context = await this.initialize(signal);
+      if (typeof context.createExportableTensor !== "function" || typeof context.exportToGPU !== "function") {
+        throw new Error("WebNN GPU tensor import/export is not exposed by this browser.");
+      }
+    }
+    async inferGpuTile(input, output, tile, mode, device, transfer, signal) {
+      await this.assertGpuInterop(signal);
+      const plan = await this.getPlan({
+        channels: 16,
+        width: tile.inputSize,
+        height: tile.inputSize,
+        data: new Float32Array(0)
+      }, mode, signal, device);
+      const context = this.context;
+      let exported;
+      try {
+        exported = await awaitGuidedOperation(
+          Promise.resolve(context.exportToGPU(plan.input)),
+          this.timeoutMs,
+          signal,
+          (buffer) => buffer.destroy()
+        );
+        await transfer.gatherGpuTile(input, exported, tile, signal);
+        exported.destroy();
+        exported = void 0;
+        context.dispatch(plan.graph, { input: plan.input }, { output: plan.output });
+        exported = await awaitGuidedOperation(
+          Promise.resolve(context.exportToGPU(plan.output)),
+          this.timeoutMs,
+          signal,
+          (buffer) => buffer.destroy()
+        );
+        await transfer.scatterGpuTile(exported, output, tile, signal);
+        exported.destroy();
+        exported = void 0;
+        throwIfGuidedAborted(signal);
+        if (this.disposed) throw new Error("WebNN context became unavailable.");
+      } catch (error) {
+        exported?.destroy();
+        this.dispose();
+        throw error;
+      }
+    }
+    dispose() {
+      this.disposed = true;
+      this.releasePlan();
+      this.context?.destroy();
+      this.context = void 0;
+    }
+  };
+
+  // src/renderer/post/inference-backends.ts
+  function errorText(error) {
+    return (error instanceof Error ? error.message : String(error)).slice(0, 512);
+  }
+  function copyTile(result, output, tile) {
+    for (let channel = 0; channel < output.channels; channel++) for (let y = 0; y < tile.height; y++) {
+      const start = channel * result.width * result.height + (y + tile.halo) * result.width + tile.halo;
+      const destination = channel * output.width * output.height + (tile.y + y) * output.width + tile.x;
+      output.data.set(result.data.subarray(start, start + tile.width), destination);
+    }
+  }
+  function median(values) {
+    return [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  }
+  function probeInput() {
+    const input = { channels: 16, width: 8, height: 8, data: new Float32Array(16 * 8 * 8) };
+    for (let index = 0; index < input.data.length; index++) {
+      input.data[index] = Math.sin(index * 0.173) * 0.37 + Math.cos(index * 0.071) * 0.19 + 0.4;
+    }
+    return input;
+  }
+  var GuidedInferenceService = class {
+    device;
+    requested;
+    environment;
+    coreSize;
+    timeoutMs;
+    model;
+    gpu;
+    webnn;
+    probed = /* @__PURE__ */ new Set();
+    selections = /* @__PURE__ */ new Map();
+    gpuSelections = /* @__PURE__ */ new Map();
+    tail = Promise.resolve();
+    active;
+    report;
+    error;
+    disposed = false;
+    constructor(configuration) {
+      this.device = configuration.device;
+      this.requested = configuration.requestedBackend ?? "auto";
+      this.environment = configuration.webnn === null ? void 0 : configuration.webnn ?? getGuidedWebNnEnvironment();
+      this.coreSize = configuration.coreSize ?? 128;
+      this.timeoutMs = configuration.timeoutMs ?? 3e4;
+      if (!["auto", "webgpu", "webnn", "webnn-npu"].includes(this.requested)) throw new Error("Unknown inference backend preference.");
+      if (!Number.isSafeInteger(this.coreSize) || this.coreSize < 2 || this.coreSize > 128 || this.coreSize % 2) {
+        throw new RangeError("Inference tile cores must be even integers from 2 to 128.");
+      }
+      if (!Number.isFinite(this.timeoutMs) || this.timeoutMs < 100 || this.timeoutMs > 12e4) {
+        throw new RangeError("Inference operation timeout must be between 100 and 120000 milliseconds.");
+      }
+      void this.device.lost.then((info) => {
+        if (!this.disposed) {
+          this.error = `Reconstruction GPU device was lost: ${info.message.slice(0, 256)}`;
+          this.dispose();
+        }
+      }, () => {
+        if (!this.disposed) {
+          this.error = "Reconstruction GPU device was lost.";
+          this.dispose();
+        }
+      });
+    }
+    get status() {
+      return {
+        modelReady: this.model !== void 0 && !this.disposed,
+        busy: this.active !== void 0,
+        requestedBackend: this.requested,
+        ...this.report === void 0 ? {} : { report: this.report },
+        ...this.error === void 0 ? {} : { error: this.error }
+      };
+    }
+    enqueue(operation, external) {
+      if (this.disposed) return Promise.reject(new Error("Reconstruction service was disposed."));
+      this.cancel();
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      external?.addEventListener("abort", abort, { once: true });
+      if (external?.aborted) controller.abort();
+      this.active = controller;
+      const job = this.tail.then(async () => {
+        throwIfGuidedAborted(controller.signal);
+        if (this.disposed) throw new Error("Reconstruction service was disposed.");
+        try {
+          return await operation(controller.signal);
+        } catch (error) {
+          if (!controller.signal.aborted) this.error = errorText(error);
+          throw error;
+        }
+      });
+      this.tail = job.then(() => void 0, () => void 0);
+      return job.finally(() => {
+        external?.removeEventListener("abort", abort);
+        if (this.active === controller) this.active = void 0;
+      });
+    }
+    setModel(model) {
+      if (!this.disposed && this.model !== void 0 && model.weights.length === this.model.weights.length && JSON.stringify(model.graph) === JSON.stringify(this.model.graph) && JSON.stringify(model.provenance) === JSON.stringify(this.model.provenance) && model.weights.every((value, index) => value === this.model.weights[index])) return Promise.resolve();
+      return this.enqueue(async (signal) => {
+        assertGuidedModel(model);
+        const snapshot = {
+          graph: createGuidedReconstructionGraph(),
+          weights: model.weights.slice(),
+          provenance: {
+            ...model.provenance,
+            trainingScenes: [...model.provenance.trainingScenes],
+            validationScenes: [...model.provenance.validationScenes],
+            testScenes: [...model.provenance.testScenes]
+          }
+        };
+        await awaitGuidedOperation(verifyGuidedModel(snapshot), this.timeoutMs, signal);
+        throwIfGuidedAborted(signal);
+        this.gpu?.dispose();
+        this.webnn?.dispose();
+        this.probed.clear();
+        this.selections.clear();
+        this.gpuSelections.clear();
+        this.model = snapshot;
+        this.gpu = new GuidedWebGpuBackend(this.device, snapshot, this.timeoutMs);
+        this.webnn = void 0;
+        this.error = void 0;
+        this.report = void 0;
+      });
+    }
+    async probe(backend, mode, signal) {
+      const key = `${backend.kind}:${mode}`;
+      if (this.probed.has(key)) return;
+      const input = probeInput();
+      const expected = runGuidedGraphCpu(this.model.graph, this.model.weights, input, mode);
+      const actual = await backend.inferTile(input, mode, signal);
+      assertGuidedParity(actual.data, expected.data);
+      throwIfGuidedAborted(signal);
+      this.probed.add(key);
+    }
+    async select(firstTile, mode, signal) {
+      const gpu = this.gpu;
+      await this.probe(gpu, mode, signal);
+      const existing = this.selections.get(mode);
+      if (existing !== void 0) return existing;
+      const fallback = (reason) => {
+        const value = { backend: gpu, ...reason === void 0 ? {} : { fallbackReason: reason } };
+        this.selections.set(mode, value);
+        return value;
+      };
+      if (this.requested === "webgpu") return fallback();
+      if (this.environment === void 0) return fallback("WebNN is not exposed by this browser; using ordinary WebGPU compute.");
+      try {
+        this.webnn ??= new GuidedWebNnBackend(this.environment, this.model, this.requested === "webnn-npu", this.timeoutMs);
+        await this.probe(this.webnn, mode, signal);
+        const gpuWarm = await gpu.inferTile(firstTile, mode, signal);
+        const webnnWarm = await this.webnn.inferTile(firstTile, mode, signal);
+        assertGuidedParity(webnnWarm.data, gpuWarm.data);
+        const timings = { webgpu: [], webnn: [] };
+        for (let iteration = 0; iteration < 3; iteration++) {
+          for (const backend of iteration % 2 ? [this.webnn, gpu] : [gpu, this.webnn]) {
+            const start = performance.now();
+            const result = await backend.inferTile(firstTile, mode, signal);
+            timings[backend.kind].push(performance.now() - start);
+            assertGuidedParity(result.data, gpuWarm.data);
+          }
+        }
+        const benchmarkMilliseconds = { webgpu: median(timings.webgpu), webnn: median(timings.webnn) };
+        const useWebnn = this.requested !== "auto" || benchmarkMilliseconds.webnn < benchmarkMilliseconds.webgpu * 0.9;
+        const selection = {
+          backend: useWebnn ? this.webnn : gpu,
+          benchmarkMilliseconds,
+          ...!useWebnn ? { fallbackReason: "WebNN including tensor transfers did not beat WebGPU by 10%; retained WebGPU." } : {}
+        };
+        this.selections.set(mode, selection);
+        return selection;
+      } catch (error) {
+        throwIfGuidedAborted(signal);
+        this.webnn?.dispose();
+        this.webnn = void 0;
+        for (const [key, selected] of this.selections) if (selected.backend.kind === "webnn") this.selections.delete(key);
+        this.gpuSelections.clear();
+        this.probed.delete("webnn:native");
+        this.probed.delete("webnn:2x");
+        return fallback(`WebNN probe or transfer failed: ${errorText(error)} Using WebGPU.`);
+      }
+    }
+    runGpuTile(selection, input, output, tile, mode, signal) {
+      return selection.backend.kind === "webnn" ? selection.backend.inferGpuTile(input, output, tile, mode, this.device, this.gpu, signal) : this.gpu.inferGpuTile(input, output, tile, mode, signal);
+    }
+    async selectGpu(input, output, tile, mode, signal) {
+      const existing = this.gpuSelections.get(mode);
+      if (existing !== void 0) return existing;
+      const fallback = (reason) => {
+        const value = { backend: this.gpu, ...reason === void 0 ? {} : { fallbackReason: reason } };
+        this.gpuSelections.set(mode, value);
+        return value;
+      };
+      if (this.requested === "webgpu") return fallback();
+      if (this.environment === void 0) return fallback("WebNN is not exposed; retained WebGPU without downloading the frame.");
+      try {
+        this.webnn ??= new GuidedWebNnBackend(this.environment, this.model, this.requested === "webnn-npu", this.timeoutMs);
+        await this.webnn.assertGpuInterop(signal);
+        const candidate = { backend: this.webnn };
+        const key = `webnn-gpu:${mode}`;
+        if (!this.probed.has(key)) {
+          const source = probeInput();
+          const probe = this.gpu.createInput(source);
+          const result = this.gpu.createOutput(probe, mode);
+          try {
+            await this.runGpuTile(
+              candidate,
+              probe,
+              result,
+              { x: 0, y: 0, inputX: 0, inputY: 0, width: 8, height: 8, inputSize: 8, halo: 0 },
+              mode,
+              signal
+            );
+            const readback = await this.gpu.readProbe(result, signal);
+            assertGuidedParity(readback.data, runGuidedGraphCpu(this.model.graph, this.model.weights, source, mode).data);
+            this.probed.add(key);
+          } finally {
+            this.gpu.releaseOutput(probe);
+            this.gpu.releaseOutput(result);
+          }
+        }
+        const baseline = { backend: this.gpu };
+        await this.runGpuTile(baseline, input, output, tile, mode, signal);
+        await this.runGpuTile(candidate, input, output, tile, mode, signal);
+        const timings = { webgpu: [], webnn: [] };
+        for (let iteration = 0; iteration < 3; iteration++) {
+          for (const selected2 of iteration % 2 ? [candidate, baseline] : [baseline, candidate]) {
+            const start = performance.now();
+            await this.runGpuTile(selected2, input, output, tile, mode, signal);
+            timings[selected2.backend.kind].push(performance.now() - start);
+          }
+        }
+        const benchmarkMilliseconds = { webgpu: median(timings.webgpu), webnn: median(timings.webnn) };
+        const useWebnn = this.requested !== "auto" || benchmarkMilliseconds.webnn < benchmarkMilliseconds.webgpu * 0.9;
+        const selected = {
+          backend: useWebnn ? this.webnn : this.gpu,
+          benchmarkMilliseconds,
+          ...!useWebnn ? { fallbackReason: "WebNN including GPU tensor transfers did not beat WebGPU by 10%; retained WebGPU." } : {}
+        };
+        this.gpuSelections.set(mode, selected);
+        return selected;
+      } catch (error) {
+        throwIfGuidedAborted(signal);
+        this.webnn?.dispose();
+        this.webnn = void 0;
+        this.selections.clear();
+        this.gpuSelections.clear();
+        for (const key of this.probed) if (key.startsWith("webnn")) this.probed.delete(key);
+        return fallback(`WebNN GPU interoperability probe failed: ${errorText(error)} Retained WebGPU without downloading the frame.`);
+      }
+    }
+    createReport(selection, start, tileCount, hostTransfers) {
+      const accelerated = selection.backend.kind === "webnn" ? this.webnn?.accelerated : void 0;
+      const reportedDevices = selection.backend.kind === "webnn" ? this.webnn?.reportedDevices : void 0;
+      return Object.freeze({
+        requestedBackend: this.requested,
+        executedBackend: selection.backend.kind,
+        hardwareUnits: "unverified",
+        milliseconds: performance.now() - start,
+        tileCount,
+        hostTransfers,
+        ...selection.fallbackReason === void 0 ? {} : { fallbackReason: selection.fallbackReason },
+        ...selection.benchmarkMilliseconds === void 0 ? {} : { benchmarkMilliseconds: selection.benchmarkMilliseconds },
+        ...accelerated === void 0 ? {} : { webnnAccelerated: accelerated },
+        ...reportedDevices === void 0 ? {} : { reportedDevices: Object.freeze([...reportedDevices]) }
+      });
+    }
+    /** New jobs supersede pending work; input storage must remain unchanged until the promise settles. */
+    infer(input, mode, options = {}) {
+      return this.enqueue(async (signal) => {
+        const start = performance.now();
+        this.validateInput(input, mode);
+        if (!input.data.every(Number.isFinite)) throw new Error("Reconstruction input contains non-finite features.");
+        const tiles = planGuidedTiles(input.width, input.height, this.coreSize);
+        const channels = mode === "native" ? 4 : 16;
+        const output = { ...input, channels, data: new Float32Array(channels * input.width * input.height) };
+        options.onProgress?.({ phase: "probing", completedTiles: 0, totalTiles: tiles.length });
+        let selection = await this.select(extractGuidedTile(input, tiles[0]), mode, signal);
+        for (let index = 0; index < tiles.length; index++) {
+          throwIfGuidedAborted(signal);
+          const tile = tiles[index];
+          const extracted = extractGuidedTile(input, tile);
+          let result;
+          try {
+            result = await selection.backend.inferTile(extracted, mode, signal);
+          } catch (error) {
+            throwIfGuidedAborted(signal);
+            if (selection.backend.kind !== "webnn") throw error;
+            this.webnn?.dispose();
+            this.webnn = void 0;
+            selection = { backend: this.gpu, fallbackReason: `WebNN inference failed: ${errorText(error)} Recomputed every tile with WebGPU.` };
+            this.selections.clear();
+            this.selections.set(mode, selection);
+            this.gpuSelections.clear();
+            this.probed.delete("webnn:native");
+            this.probed.delete("webnn:2x");
+            index = -1;
+            continue;
+          }
+          if (!result.data.every(Number.isFinite)) throw new Error("Reconstruction produced non-finite values.");
+          copyTile(result, output, tile);
+          options.onProgress?.({ phase: "restoring", completedTiles: index + 1, totalTiles: tiles.length });
+        }
+        throwIfGuidedAborted(signal);
+        this.report = this.createReport(selection, start, tiles.length, true);
+        this.error = void 0;
+        return { tensor: output, report: this.report };
+      }, options.signal);
+    }
+    validateInput(input, mode) {
+      if (this.model === void 0 || this.gpu === void 0) throw new Error("A quality-verified guided model must be loaded before inference.");
+      if (mode !== "native" && mode !== "2x") throw new Error("Unknown reconstruction mode.");
+      if (input.channels !== 16 || ![input.width, input.height].every((value) => Number.isSafeInteger(value) && value > 0 && value <= 16384)) {
+        throw new RangeError("Reconstruction requires bounded 16-channel image features.");
+      }
+      if (input.width * input.height * 16 * 4 > this.device.limits.maxStorageBufferBindingSize) {
+        throw new RangeError("Reconstruction image exceeds the selected GPU storage limit; use an explicitly smaller render resolution.");
+      }
+      if ("data" in input) assertGuidedTensor(input);
+    }
+    /** The caller owns the input buffer and must release the returned buffer after final compositing. */
+    inferGpu(input, mode, options = {}) {
+      return this.enqueue(async (signal) => {
+        const start = performance.now();
+        this.validateInput(input, mode);
+        if (!(input.buffer.usage & GPUBufferUsage.STORAGE) || input.buffer.size < input.channels * input.width * input.height * 4) {
+          throw new Error("GPU reconstruction input must be a correctly sized storage buffer.");
+        }
+        const tiles = planGuidedTiles(input.width, input.height, this.coreSize);
+        options.onProgress?.({ phase: "probing", completedTiles: 0, totalTiles: tiles.length });
+        await this.probe(this.gpu, mode, signal);
+        const output = this.gpu.createOutput(input, mode);
+        let success = false;
+        try {
+          let selection = await this.selectGpu(input, output, tiles[0], mode, signal);
+          for (let index = 0; index < tiles.length; index++) {
+            throwIfGuidedAborted(signal);
+            try {
+              await this.runGpuTile(selection, input, output, tiles[index], mode, signal);
+            } catch (error) {
+              throwIfGuidedAborted(signal);
+              if (selection.backend.kind !== "webnn") throw error;
+              this.webnn?.dispose();
+              this.webnn = void 0;
+              selection = { backend: this.gpu, fallbackReason: `WebNN GPU inference failed: ${errorText(error)} Recomputed every tile with WebGPU.` };
+              this.selections.clear();
+              this.gpuSelections.clear();
+              this.gpuSelections.set(mode, selection);
+              for (const key of this.probed) if (key.startsWith("webnn")) this.probed.delete(key);
+              index = -1;
+              continue;
+            }
+            options.onProgress?.({ phase: "restoring", completedTiles: index + 1, totalTiles: tiles.length });
+          }
+          throwIfGuidedAborted(signal);
+          this.report = this.createReport(selection, start, tiles.length, false);
+          this.error = void 0;
+          const backend = this.gpu;
+          success = true;
+          return { tensor: output, report: this.report, release: () => backend.releaseOutput(output) };
+        } finally {
+          if (!success) this.gpu?.releaseOutput(output);
+        }
+      }, options.signal);
+    }
+    cancel() {
+      this.active?.abort();
+    }
+    dispose() {
+      this.disposed = true;
+      this.cancel();
+      this.gpu?.dispose();
+      this.webnn?.dispose();
+      this.model = void 0;
+      this.selections.clear();
+      this.gpuSelections.clear();
+      this.probed.clear();
+    }
+  };
+
   // src/renderer/environment/mesh-builder.ts
   var EPSILON = 1e-20;
-  function normalize4(vector, label) {
-    const length = Math.hypot(vector[0], vector[1], vector[2]);
+  function normalize4(vector2, label) {
+    const length = Math.hypot(vector2[0], vector2[1], vector2[2]);
     if (!Number.isFinite(length) || length <= 1e-10) throw new RangeError(`${label} must have non-zero finite length`);
-    return [vector[0] / length, vector[1] / length, vector[2] / length];
+    return [vector2[0] / length, vector2[1] / length, vector2[2] / length];
   }
   function subtract4(a, b) {
     return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
   }
-  function cross4(a, b) {
+  function cross5(a, b) {
     return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   }
   var EnvironmentMeshBuilder = class {
@@ -32339,14 +35361,14 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       const p0 = read(a);
       const p1 = read(b);
       const p2 = read(c);
-      const area = cross4(subtract4(p1, p0), subtract4(p2, p0));
+      const area = cross5(subtract4(p1, p0), subtract4(p2, p0));
       if (area[0] * area[0] + area[1] * area[1] + area[2] * area[2] <= EPSILON) {
         throw new RangeError("environment triangle must not be degenerate");
       }
       this.indices.push(a, b, c);
     }
     addQuad(a, b, c, d, windWeights = [0, 0, 0, 0]) {
-      const normal = normalize4(cross4(subtract4(b, a), subtract4(c, a)), "environment quad normal");
+      const normal = normalize4(cross5(subtract4(b, a), subtract4(c, a)), "environment quad normal");
       const start = this.vertexCount;
       this.addVertex(a, normal, windWeights[0]);
       this.addVertex(b, normal, windWeights[1]);
@@ -32371,8 +35393,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         if (!previous || !next) throw new Error("Internal tube path invariant failed");
         const tangent = normalize4(subtract4(next, previous), "environment tube tangent");
         const reference = Math.abs(tangent[1]) < 0.92 ? [0, 1, 0] : [1, 0, 0];
-        const u = normalize4(cross4(reference, tangent), "environment tube basis");
-        const v = normalize4(cross4(tangent, u), "environment tube basis");
+        const u = normalize4(cross5(reference, tangent), "environment tube basis");
+        const v = normalize4(cross5(tangent, u), "environment tube basis");
         for (let segment = 0; segment < radialSegments; segment += 1) {
           const angle = Math.PI * 2 * segment / radialSegments;
           const cosine = Math.cos(angle);
@@ -32410,8 +35432,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       return mesh;
     }
   };
-  function normalized(vector) {
-    return normalize4(vector, "environment direction");
+  function normalized(vector2) {
+    return normalize4(vector2, "environment direction");
   }
 
   // src/renderer/environment/random.ts
@@ -32569,8 +35591,8 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
   function add4(a, b) {
     return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   }
-  function multiply(vector, scalar) {
-    return [vector[0] * scalar, vector[1] * scalar, vector[2] * scalar];
+  function multiply2(vector2, scalar) {
+    return [vector2[0] * scalar, vector2[1] * scalar, vector2[2] * scalar];
   }
   function terrainHeight(mesh, xSegments, zSegments, center2, x, z) {
     const positions = mesh.positions;
@@ -32681,10 +35703,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         const side = normalized([Math.cos(angle + Math.PI / 2), random.range(-0.16, 0.16), Math.sin(angle + Math.PI / 2)]);
         const height = random.range(0.42, 0.72);
         const width = random.range(0.18, 0.34);
-        const base = add4(clusterCenter, multiply(up, -height * 0.46));
-        const middle = add4(clusterCenter, multiply(up, height * 0.03));
-        const tip = add4(clusterCenter, multiply(up, height * 0.54));
-        builder.addQuad(base, add4(middle, multiply(side, -width)), tip, add4(middle, multiply(side, width)), [0, 0.72, 1, 0.72]);
+        const base = add4(clusterCenter, multiply2(up, -height * 0.46));
+        const middle = add4(clusterCenter, multiply2(up, height * 0.03));
+        const tip = add4(clusterCenter, multiply2(up, height * 0.54));
+        builder.addQuad(base, add4(middle, multiply2(side, -width)), tip, add4(middle, multiply2(side, width)), [0, 0.72, 1, 0.72]);
       }
     }
     return builder.finish();
@@ -32708,10 +35730,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       const height = random.range(0.28, 0.82);
       const bend = [random.range(-0.1, 0.1), 0, random.range(-0.1, 0.1)];
       const base = [x, y, z];
-      const bottomLeft = add4(base, multiply(side, -width));
-      const bottomRight = add4(base, multiply(side, width));
+      const bottomLeft = add4(base, multiply2(side, -width));
+      const bottomRight = add4(base, multiply2(side, width));
       const topCenter = add4(base, [bend[0], height, bend[2]]);
-      builder.addQuad(bottomLeft, bottomRight, add4(topCenter, multiply(side, width * 0.22)), add4(topCenter, multiply(side, -width * 0.22)), [0, 0, 1, 1]);
+      builder.addQuad(bottomLeft, bottomRight, add4(topCenter, multiply2(side, width * 0.22)), add4(topCenter, multiply2(side, -width * 0.22)), [0, 0, 1, 1]);
     }
     return builder.finish();
   }
@@ -32728,10 +35750,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
         const up = normalized([Math.cos(angle + Math.PI / 2) * 0.35, random.range(0.65, 0.9), Math.sin(angle + Math.PI / 2) * 0.35]);
         const height = random.range(0.16, 0.26);
         const width = random.range(0.07, 0.13);
-        const base = add4(flowerCenter, multiply(up, -height * 0.35));
-        const middle = add4(flowerCenter, multiply(up, height * 0.05));
-        const tip = add4(flowerCenter, multiply(up, height * 0.65));
-        builder.addQuad(base, add4(middle, multiply(side, -width)), tip, add4(middle, multiply(side, width)), [0, 0.7, 1, 0.7]);
+        const base = add4(flowerCenter, multiply2(up, -height * 0.35));
+        const middle = add4(flowerCenter, multiply2(up, height * 0.05));
+        const tip = add4(flowerCenter, multiply2(up, height * 0.65));
+        builder.addQuad(base, add4(middle, multiply2(side, -width)), tip, add4(middle, multiply2(side, width)), [0, 0.7, 1, 0.7]);
       }
     }
     return builder.finish();
@@ -32784,7 +35806,7 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
       flowers: { baseColor: [0.78, 0.18, 0.38], roughness: 0.67, metallic: 0, doubleSided: true, surfaceDetail: "foliage", colorVariation: 0.58, detailScale: 31, windInfluence: 0.76 },
       rock: { baseColor: [0.34, 0.35, 0.31], roughness: 0.9, metallic: 0, surfaceDetail: "standard", colorVariation: 0.24, detailScale: 7, windInfluence: 0 }
     };
-    return Object.entries(definitions).map(([name, definition]) => ({ name, definition }));
+    return Object.entries(definitions).map(([name2, definition]) => ({ name: name2, definition }));
   }
   function meshComplexity(mesh) {
     const nested = typeof mesh.positions[0] !== "number";
@@ -32891,9 +35913,10 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     const host = globalThis;
     const existing = host[REGISTRATION_STATE_KEY];
     if (isRegistrationState(existing)) {
+      if (!(existing.runtimes instanceof WeakMap)) existing.runtimes = /* @__PURE__ */ new WeakMap();
       return existing;
     }
-    const created = { extensions: /* @__PURE__ */ new WeakMap() };
+    const created = { extensions: /* @__PURE__ */ new WeakMap(), runtimes: /* @__PURE__ */ new WeakMap() };
     host[REGISTRATION_STATE_KEY] = created;
     return created;
   }
@@ -32920,15 +35943,23 @@ ${DISPLAY_TONE_MAP_FUNCTION_ANCHOR}`
     }
     const physicsModuleLoadContext = capturePhysicsModuleLoadContext();
     const state = registrationState();
-    const registered = state.extensions.get(scratch.extensions);
+    const registered = state.runtimes?.get(scratch.vm.runtime) ?? state.extensions.get(scratch.extensions);
     if (registered !== void 0 && canReuseExtension(registered)) {
+      const versioned = registered;
+      const existingVersion = versioned.getRuntimeVersion?.() ?? "an older unversioned build";
+      if (existingVersion !== PRIOSDK_RUNTIME_BUILD) {
+        throw new Error(`This tab already contains PrioSDK ${existingVersion}, but this project requires ${PRIOSDK_RUNTIME_BUILD}. Open the project in a fresh tab to load its bundled runtime. No existing project was replaced.`);
+      }
       const configurable = registered;
       configurable.configurePhysicsModuleLoading?.(physicsModuleLoadContext);
+      state.runtimes?.set(scratch.vm.runtime, registered);
+      state.extensions.set(scratch.extensions, registered);
       return registered;
     }
     const extension = new PrioSDKExtension(scratch, physicsModuleLoadContext);
     scratch.extensions.register(extension);
     state.extensions.set(scratch.extensions, extension);
+    state.runtimes?.set(scratch.vm.runtime, extension);
     return extension;
   }
   if (!Scratch.extensions.unsandboxed) {
